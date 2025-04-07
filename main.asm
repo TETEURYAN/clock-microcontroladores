@@ -1,151 +1,154 @@
 ;
 ; Projeto da disciplina de Microcontroladores e Aplicações
-; Aplicação de um relógio que conta com minutos e segundos usando display de 7 segmentos
-; 07/04/2025 - Matheus Ryan, Lucas Heron, Rafael Luciano
+; Relógio digital com display de 7 segmentos para minutos e segundos
+; Autores: Matheus Ryan, Lucas Heron, Rafael Luciano
+; Data: 07/04/2025
 ;
 
-; Definições para ATmega328P
-.include "m328pdef.inc"
+; ===================== CONSTANTES DE HARDWARE =====================
+.equ PORTA_DEZENAS = PORTC       ; Porta para display das dezenas
+.equ DDR_DEZENAS = DDRC          ; Registro de direção das dezenas
+.equ PORTA_UNIDADES = PORTD      ; Porta para display das unidades
+.equ DDR_UNIDADES = DDRD         ; Registro de direção das unidades
 
-; Constantes
-.equ DISPLAY_DEZENAS_PORT = PORTC
-.equ DISPLAY_DEZENAS_DDR = DDRC
-.equ DISPLAY_UNIDADES_PORT = PORTD
-.equ DISPLAY_UNIDADES_DDR = DDRD
+; ===================== CONSTANTES DE TEMPORIZAÇÃO =================
+.equ VALOR_INICIAL_TIMER = 256 - (16000000/1024/100)  ; 100 interrupções/segundo
+.equ NUMERO_OVERFLOWS = 100       ; 100 interrupções = 1 segundo exato
 
-; Variáveis na SRAM
+; ===================== ALOCAÇÃO DE VARIÁVEIS ======================
 .dseg
-count: .byte 1          ; Contador de segundos (0-59)
-overflow_count: .byte 1 ; Contador de overflows para precisão
+segundos: .byte 1          ; Contador principal de segundos (0-59)
+contador_overflow: .byte 1 ; Contador auxiliar de overflows
 
-; Vetor de interrupção
+; ===================== VETORES DE INTERRUPÇÃO =====================
 .cseg
 .org 0x0000
-    jmp main            ; Reset Vector
-.org OVF0addr          ; Timer0 Overflow Address
-    jmp timer0_ovf_isr
+    jmp inicio             ; Vetor de reset
+.org OVF0addr             ; Endereço do overflow do Timer0
+    jmp trata_overflow     ; Rotina de tratamento
 
-; Tabela de conversão para display de 7 segmentos (cátodo comum)
-.org 0x0100            ; Posiciona a tabela após os vetores de interrupção
-segment_table:
-    ; 0    1    2    3    4    5    6    7    8    9
+; ================== TABELA DE CONVERSÃO DOS DISPLAYS ==============
+; Padrões para display de 7 segmentos (cátodo comum)
+.org 0x0100
+tabela_segmentos:
+    ; Dígitos: 0    1    2    3    4    5    6    7    8    9
     .db 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
 
-; Início do programa principal
+; ===================== PROGRAMA PRINCIPAL =========================
 .cseg
-.org 0x0034            ; Posição após vetores de interrupção + espaço extra
-main:
-    ; Inicializa a pilha
+.org 0x0034
+inicio:
+    ; ----- Inicialização da pilha -----
     ldi r16, high(RAMEND)
     out SPH, r16
     ldi r16, low(RAMEND)
     out SPL, r16
 
-    ; Configura portas como saída
+    ; ----- Configura portas como saída -----
     ldi r16, 0xFF
-    out DISPLAY_DEZENAS_DDR, r16    ; PORTC toda como saída
-    out DISPLAY_UNIDADES_DDR, r16   ; PORTD toda como saída
+    out DDR_DEZENAS, r16     ; Configura PORTC como saída
+    out DDR_UNIDADES, r16    ; Configura PORTD como saída
 
-    ; Inicializa contadores
+    ; ----- Inicialização dos contadores -----
     clr r16
-    sts count, r16
-    sts overflow_count, r16
-    call update_displays
+    sts segundos, r16
+    sts contador_overflow, r16
+    call atualiza_display
 
-    ; Configura Timer0 para interrupção a cada ~1/15s (para precisão de 1s)
-    ldi r16, (1<<CS02)|(1<<CS00)  ; Prescaler 1024
+    ; ----- Configuração do Timer0 -----
+    ldi r16, (1<<CS02)|(1<<CS00)  ; Prescaler de 1024
     out TCCR0B, r16
-
-    ldi r16, 0x06      ; Valor inicial para overflow em ~1/15s (256 - (16000000/1024/15))
+    
+    ldi r16, VALOR_INICIAL_TIMER   ; Valor inicial calculado
     out TCNT0, r16
-
-    ldi r16, (1<<TOIE0)   ; Habilita interrupção por overflow
+    
+    ldi r16, (1<<TOIE0)            ; Habilita interrupção por overflow
     sts TIMSK0, r16
 
-    ; Habilita interrupções globais
+    ; ----- Habilita interrupções globais -----
     sei
 
-main_loop:
-    rjmp main_loop
+loop_principal:
+    rjmp loop_principal          ; Loop infinito
 
-; Atualiza ambos os displays
-update_displays:
-    push r16
+; ================== ROTINA DE ATUALIZAÇÃO DOS DISPLAYS ============
+atualiza_display:
+    push r16                     ; Preserva registradores
     push r17
     push r18
     push r30
     push r31
 
-    lds r16, count
+    lds r16, segundos           ; Carrega valor dos segundos
     
-    ; Calcula dezenas (divide por 10)
-    ldi r17, 10
-    clr r18            ; r18 será as dezenas
+    ; ----- Cálculo das dezenas (divisão por 10) -----
+    ldi r17, 10                 ; Divisor
+    clr r18                     ; r18 armazenará as dezenas
 
-calc_dezenas:
-    cp r16, r17
-    brlo show_dezenas   ; Se count < 10, vai mostrar
-    sub r16, r17       ; Subtrai 10
-    inc r18            ; Incrementa dezenas
-    rjmp calc_dezenas
+calcula_dezenas:
+    cp r16, r17                 ; Compara com 10
+    brlo mostra_dezenas         ; Se menor que 10, vai mostrar
+    sub r16, r17                ; Subtrai 10
+    inc r18                     ; Incrementa contador de dezenas
+    rjmp calcula_dezenas        ; Repete
 
-show_dezenas:
-    ; Mostra dezenas (valor em r18)
-    ldi ZL, low(segment_table<<1)
-    ldi ZH, high(segment_table<<1)
-    add ZL, r18
+mostra_dezenas:
+    ; ----- Mostra dígito das dezenas -----
+    ldi ZL, low(tabela_segmentos<<1)  ; Configura ponteiro Z
+    ldi ZH, high(tabela_segmentos<<1)
+    add ZL, r18                      ; Ajusta para o dígito correto
     adc ZH, r1
-    lpm r17, Z
-    out DISPLAY_DEZENAS_PORT, r17
+    lpm r17, Z                       ; Lê padrão do display
+    out PORTA_DEZENAS, r17           ; Envia para o display
 
-    ; Mostra unidades (valor em r16)
-    ldi ZL, low(segment_table<<1)
-    ldi ZH, high(segment_table<<1)
-    add ZL, r16
+    ; ----- Mostra dígito das unidades -----
+    ldi ZL, low(tabela_segmentos<<1)  ; Reconfigura ponteiro Z
+    ldi ZH, high(tabela_segmentos<<1)
+    add ZL, r16                       ; Usa o resto como índice
     adc ZH, r1
-    lpm r17, Z
-    out DISPLAY_UNIDADES_PORT, r17
+    lpm r17, Z                        ; Lê padrão do display
+    out PORTA_UNIDADES, r17           ; Envia para o display
 
-    pop r31
+    pop r31                      ; Restaura registradores
     pop r30
     pop r18
     pop r17
     pop r16
     ret
 
-; Interrupção do Timer0
-timer0_ovf_isr:
-    push r16
+; ============== ROTINA DE TRATAMENTO DE OVERFLOW ==================
+trata_overflow:
+    push r16                     ; Preserva registradores
     push r17
     in r16, SREG
     push r16
 
-    ; Reinicia o Timer0 com valor para ~1/15s
-    ldi r16, 0x06
+    ; ----- Reinicializa o Timer0 -----
+    ldi r16, VALOR_INICIAL_TIMER
     out TCNT0, r16
 
-    ; Incrementa contador de overflows
-    lds r16, overflow_count
+    ; ----- Incrementa contador de overflows -----
+    lds r16, contador_overflow
     inc r16
-    cpi r16, 60    ; 15 overflows = 1 segundo
-    brne no_second
+    cpi r16, NUMERO_OVERFLOWS    ; Verifica se atingiu o limite
+    brne nao_atualiza
     
-    ; A cada 1 segundo real:
-    clr r16            ; Zera contador de overflows
-    lds r17, count     ; Incrementa contador de segundos
+    ; ----- Atualização do tempo (1 segundo) -----
+    clr r16                      ; Zera contador de overflows
+    lds r17, segundos            ; Incrementa contador de segundos
     inc r17
-    cpi r17, 60
-    brlo save_count
-    clr r17            ; Reinicia após 59 segundos
+    cpi r17, 60                  ; Verifica se passou de 59
+    brlo salva_contador
+    clr r17                      ; Reinicia após 59 segundos
 
-save_count:
-    sts count, r17
-    call update_displays
+salva_contador:
+    sts segundos, r17            ; Salva novo valor
+    call atualiza_display        ; Atualiza displays
 
-no_second:
-    sts overflow_count, r16
+nao_atualiza:
+    sts contador_overflow, r16   ; Salva contador de overflows
 
-    pop r16
+    pop r16                      ; Restaura registradores
     out SREG, r16
     pop r17
     pop r16
