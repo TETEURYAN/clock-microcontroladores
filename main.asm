@@ -1,155 +1,164 @@
-;
-; Projeto da disciplina de Microcontroladores e Aplicações
-; Relógio digital com display de 7 segmentos para minutos e segundos
+; Projeto da disciplina de Microcontroladores e Aplica��es
+; Rel�gio digital com display de 7 segmentos para minutos e segundos
 ; Autores: Matheus Ryan, Lucas Heron, Rafael Luciano
 ; Data: 07/04/2025
 ;
 
+
 ; ===================== CONSTANTES DE HARDWARE =====================
-.equ PORTA_DEZENAS = PORTC       ; Porta para display das dezenas
-.equ DDR_DEZENAS = DDRC          ; Registro de direção das dezenas
-.equ PORTA_UNIDADES = PORTD      ; Porta para display das unidades
-.equ DDR_UNIDADES = DDRD         ; Registro de direção das unidades
+.equ PORT_MINUTOS = PORTB       ; PB0-PB3: Minutos dezenas, PB4-PB7: Minutos unidades
+.equ PORT_SEGUNDOS = PORTD      ; PD0-PD3: Segundos dezenas, PD4-PD7: Segundos unidades
 
-; ===================== CONSTANTES DE TEMPORIZAÇÃO =================
-.equ VALOR_INICIAL_TIMER = 256 - (16000000/1024/100)  ; 100 interrupções/segundo
-.equ NUMERO_OVERFLOWS = 100       ; 100 interrupções = 1 segundo exato
+; ===================== CONSTANTES DE TEMPORIZA��O =================
+.equ VALOR_INICIAL_TIMER = 256 - (16000000/1024/100)  ; 100 interrup��es/segundo
+.equ NUMERO_OVERFLOWS = 100       ; 100 interrup��es = 1 segundo
 
-; ===================== ALOCAÇÃO DE VARIÁVEIS ======================
+; ===================== NOMES DE REGISTRADORES =====================
+.def reg_temp      = r16
+.def reg_dezenas   = r17
+.def reg_unidades  = r18
+.def reg_aux       = r19
+.def reg_status    = r20
+
+; ===================== ALOCA��O DE VARI�VEIS ======================
 .dseg
-segundos: .byte 1          ; Contador principal de segundos (0-59)
-contador_overflow: .byte 1 ; Contador auxiliar de overflows
+segundos:            .byte 1
+minutos:             .byte 1
+contador_overflow:   .byte 1
 
-; ===================== VETORES DE INTERRUPÇÃO =====================
+; ===================== VETORES DE INTERRUP��O =====================
 .cseg
 .org 0x0000
-    jmp inicio             ; Vetor de reset
-.org OVF0addr             ; Endereço do overflow do Timer0
-    jmp trata_overflow     ; Rotina de tratamento
-
-; ================== TABELA DE CONVERSÃO DOS DISPLAYS ==============
-; Padrões para display de 7 segmentos (cátodo comum)
-.org 0x0100
-tabela_segmentos:
-    ; Dígitos: 0    1    2    3    4    5    6    7    8    9
-    .db 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
+    jmp inicio
+.org OVF0addr
+    jmp trata_overflow
 
 ; ===================== PROGRAMA PRINCIPAL =========================
 .cseg
 .org 0x0034
 inicio:
-    ; ----- Inicialização da pilha -----
-    ldi r16, high(RAMEND)
-    out SPH, r16
-    ldi r16, low(RAMEND)
-    out SPL, r16
+    ; Inicializa pilha
+    ldi reg_temp, high(RAMEND)
+    out SPH, reg_temp
+    ldi reg_temp, low(RAMEND)
+    out SPL, reg_temp
 
-    ; ----- Configura portas como saída -----
-    ldi r16, 0xFF
-    out DDR_DEZENAS, r16     ; Configura PORTC como saída
-    out DDR_UNIDADES, r16    ; Configura PORTD como saída
+    ; Configura portas como sa�da
+    ldi reg_temp, 0xFF
+    out DDRB, reg_temp
+    out DDRD, reg_temp
 
-    ; ----- Inicialização dos contadores -----
-    clr r16
-    sts segundos, r16
-    sts contador_overflow, r16
-    call atualiza_display
+    ; Zera contadores
+    clr reg_temp
+    sts segundos, reg_temp
+    sts minutos, reg_temp
+    sts contador_overflow, reg_temp
+    call atualiza_displays
 
-    ; ----- Configuração do Timer0 -----
-    ldi r16, (1<<CS02)|(1<<CS00)  ; Prescaler de 1024
-    out TCCR0B, r16
-    
-    ldi r16, VALOR_INICIAL_TIMER   ; Valor inicial calculado
-    out TCNT0, r16
-    
-    ldi r16, (1<<TOIE0)            ; Habilita interrupção por overflow
-    sts TIMSK0, r16
+    ; Configura Timer0
+    ldi reg_temp, (1<<CS02)|(1<<CS00)
+    out TCCR0B, reg_temp
+    ldi reg_temp, VALOR_INICIAL_TIMER
+    out TCNT0, reg_temp
+    ldi reg_temp, (1<<TOIE0)
+    sts TIMSK0, reg_temp
 
-    ; ----- Habilita interrupções globais -----
-    sei
+    sei  ; Habilita interrup��es globais
 
 loop_principal:
-    rjmp loop_principal          ; Loop infinito
+    rjmp loop_principal
 
-; ================== ROTINA DE ATUALIZAÇÃO DOS DISPLAYS ============
-atualiza_display:
-    push r16                     ; Preserva registradores
-    push r17
-    push r18
-    push r30
-    push r31
-
-    lds r16, segundos           ; Carrega valor dos segundos
-    
-    ; ----- Cálculo das dezenas (divisão por 10) -----
-    ldi r17, 10                 ; Divisor
-    clr r18                     ; r18 armazenará as dezenas
-
-calcula_dezenas:
-    cp r16, r17                 ; Compara com 10
-    brlo mostra_dezenas         ; Se menor que 10, vai mostrar
-    sub r16, r17                ; Subtrai 10
-    inc r18                     ; Incrementa contador de dezenas
-    rjmp calcula_dezenas        ; Repete
-
-mostra_dezenas:
-    ; ----- Mostra dígito das dezenas -----
-    ldi ZL, low(tabela_segmentos<<1)  ; Configura ponteiro Z
-    ldi ZH, high(tabela_segmentos<<1)
-    add ZL, r18                      ; Ajusta para o dígito correto
-    adc ZH, r1
-    lpm r17, Z                       ; Lê padrão do display
-    out PORTA_DEZENAS, r17           ; Envia para o display
-
-    ; ----- Mostra dígito das unidades -----
-    ldi ZL, low(tabela_segmentos<<1)  ; Reconfigura ponteiro Z
-    ldi ZH, high(tabela_segmentos<<1)
-    add ZL, r16                       ; Usa o resto como índice
-    adc ZH, r1
-    lpm r17, Z                        ; Lê padrão do display
-    out PORTA_UNIDADES, r17           ; Envia para o display
-
-    pop r31                      ; Restaura registradores
-    pop r30
-    pop r18
-    pop r17
-    pop r16
+; ================= ROTINA: DIVIS�O POR 10 ========================
+; Entrada: reg_temp = valor de 0 a 99
+; Sa�da:  reg_dezenas = dezenas, reg_unidades = unidades
+dividir_por_10:
+    push reg_aux
+    ldi reg_unidades, 10
+    clr reg_dezenas
+div_loop:
+    cp reg_temp, reg_unidades
+    brlo div_pronto
+    sub reg_temp, reg_unidades
+    inc reg_dezenas
+    rjmp div_loop
+div_pronto:
+    mov reg_unidades, reg_temp  ; unidades
+    pop reg_aux
     ret
 
-; ============== ROTINA DE TRATAMENTO DE OVERFLOW ==================
+; =============== ATUALIZA��O DOS DISPLAYS ===============
+atualiza_displays:
+    push reg_temp
+    push reg_dezenas
+    push reg_unidades
+    push reg_aux
+
+    ; ----- Minutos -----
+    lds reg_temp, minutos
+    rcall dividir_por_10
+    swap reg_unidades
+    or reg_unidades, reg_dezenas
+    out PORT_MINUTOS, reg_unidades
+
+    ; ----- Segundos -----
+    lds reg_temp, segundos
+    rcall dividir_por_10
+    swap reg_unidades
+    or reg_unidades, reg_dezenas
+    out PORT_SEGUNDOS, reg_unidades
+
+    pop reg_aux
+    pop reg_unidades
+    pop reg_dezenas
+    pop reg_temp
+    ret
+
+; ============ TIMERS ==================
 trata_overflow:
-    push r16                     ; Preserva registradores
-    push r17
-    in r16, SREG
-    push r16
+    push reg_temp
+    push reg_dezenas
+    in reg_status, SREG
+    push reg_status
 
-    ; ----- Reinicializa o Timer0 -----
-    ldi r16, VALOR_INICIAL_TIMER
-    out TCNT0, r16
+    ; Reinicializa Timer
+    ldi reg_temp, VALOR_INICIAL_TIMER
+    out TCNT0, reg_temp
 
-    ; ----- Incrementa contador de overflows -----
-    lds r16, contador_overflow
-    inc r16
-    cpi r16, NUMERO_OVERFLOWS    ; Verifica se atingiu o limite
-    brne nao_atualiza
-    
-    ; ----- Atualização do tempo (1 segundo) -----
-    clr r16                      ; Zera contador de overflows
-    lds r17, segundos            ; Incrementa contador de segundos
-    inc r17
-    cpi r17, 60                  ; Verifica se passou de 59
-    brlo salva_contador
-    clr r17                      ; Reinicia após 59 segundos
+    ; Incrementa contador de overflow
+    lds reg_temp, contador_overflow
+    inc reg_temp
+    sts contador_overflow, reg_temp
+    cpi reg_temp, NUMERO_OVERFLOWS
+    brne fim_overflow
 
-salva_contador:
-    sts segundos, r17            ; Salva novo valor
-    call atualiza_display        ; Atualiza displays
+    ; Zera contador de overflow
+    clr reg_temp
+    sts contador_overflow, reg_temp
 
-nao_atualiza:
-    sts contador_overflow, r16   ; Salva contador de overflows
+    ; Incrementa segundos
+    lds reg_dezenas, segundos
+    inc reg_dezenas
+    cpi reg_dezenas, 60
+    brlo salva_seg
 
-    pop r16                      ; Restaura registradores
-    out SREG, r16
-    pop r17
-    pop r16
+    ; Se passou de 59, zera segundos e incrementa minutos
+    clr reg_dezenas
+    lds reg_unidades, minutos
+    inc reg_unidades
+    cpi reg_unidades, 60
+    brlo salva_min
+    clr reg_unidades
+
+salva_min:
+    sts minutos, reg_unidades
+
+salva_seg:
+    sts segundos, reg_dezenas
+    call atualiza_displays
+
+fim_overflow:
+    pop reg_status
+    out SREG, reg_status
+    pop reg_dezenas
+    pop reg_temp
     reti
