@@ -1,6 +1,5 @@
 ; Projeto da disciplina de Microcontroladores e Aplicações
 ; Relógio digital com display de 7 segmentos para minutos e segundos
-; Autores: Matheus Ryan, Lucas Heron, Rafael Luciano
 ; Data: 07/04/2025
 
 
@@ -49,6 +48,14 @@ inicio:
     ldi reg_temp, 0x0F
     out DDR_BCD, reg_temp        ; PB0-PB3 como saída (BCD)
     out DDR_CTRL, reg_temp       ; PD0-PD3 como saída (controle de displays)
+
+	; Configura PC0, PC1 e PC2 como entrada (botões) e PC3 como saída (buzzer)
+    ldi reg_temp, 0b00001000     ; PC3 saída (buzzer)
+    out DDRC, reg_temp           ; PC0-PC2 são entradas por padrão (0)
+
+	; Ativa resistores de pull-up nos botões (PC0-PC2)
+    ldi reg_temp, 0b00000111     ; PC0-PC2
+    out PORTC, reg_temp
 
     ; Zera contadores
     clr reg_temp
