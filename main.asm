@@ -14,10 +14,11 @@
 ; ===================== CONSTANTES DE BOTÕES =======================
 .equ BOTAO_MODE     = 2           ; PC2
 .equ BOTAO_START    = 1           ; PC1
+.equ BOTAO_RESET    = 0           ; PC0  <- Novo Botão RESET
 .equ BUZZER_BIT     = 3           ; PC3
 
 ; ===================== CONSTANTES DE MODOS ========================
-.equ MODO_RELOGIO   = 0
+.equ MODO_RELOGIO    = 0
 .equ MODO_CRONOMETRO = 1
 
 ; ===================== CONSTANTES DE TEMPORIZAÇÃO =================
@@ -58,21 +59,20 @@ inicio:
     ldi reg_temp, low(RAMEND)
     out SPL, reg_temp
 
-    ; Inicializa portas
+    ; Inicializa portas de saída (BCD e controle)
     ldi reg_temp, 0x0F
     out DDR_BCD, reg_temp
     out DDR_CTRL, reg_temp
 
-    ; Configura PC1 como entrada, PC2 como entrada, PC3 como saída (buzzer)
+    ; Configura PC1, PC2 e PC0 como entrada e PC3 como saída (buzzer)
     lds reg_temp, DDRC_ADDR
-    andi reg_temp, ~(1 << BOTAO_MODE)
-    andi reg_temp, ~(1 << BOTAO_START)
+    andi reg_temp, ~( (1 << BOTAO_MODE) | (1 << BOTAO_START) | (1 << BOTAO_RESET) )
     ori reg_temp, (1 << BUZZER_BIT)
     sts DDRC_ADDR, reg_temp
 
-    ; Habilita pull-up para botões
+    ; Habilita pull-up para os botões (MODE, START e RESET)
     lds reg_temp, PORTC_ADDR
-    ori reg_temp, (1 << BOTAO_MODE) | (1 << BOTAO_START)
+    ori reg_temp, (1 << BOTAO_MODE) | (1 << BOTAO_START) | (1 << BOTAO_RESET)
     sts PORTC_ADDR, reg_temp
 
     ; Zera contadores e modo
@@ -104,31 +104,34 @@ loop_principal:
 verifica_botoes:
     push reg_temp
     push reg_aux
-
-    ; Lê PINC
-	;rcall debounce
+    ; Executa debounce único e lê os botões de forma debounced
+    rcall debounce
     lds reg_temp, PINC_ADDR
+    mov reg_aux, reg_temp  ; Guarda o valor lido
 
     ; Verifica botão MODE (PC2)
-    sbrs reg_temp, BOTAO_MODE
+    sbrs reg_aux, BOTAO_MODE
     rcall alternar_modo
 
     ; Verifica botão START (PC1)
-    sbrs reg_temp, BOTAO_START
+    sbrs reg_aux, BOTAO_START
     rcall iniciar_cronometro
+
+    ; Verifica botão RESET (PC0)
+    sbrs reg_aux, BOTAO_RESET
+    rcall reset_cronometro
 
     pop reg_aux
     pop reg_temp
     ret
 
 alternar_modo:
-	rcall debounce
     lds reg_temp, modo_atual
-	ldi reg_aux, 0x01
-	eor reg_temp, reg_aux
+    ldi reg_aux, 0x01
+    eor reg_temp, reg_aux
     sts modo_atual, reg_temp
 
-    ; Zera cronômetro ao entrar
+    ; Se for para o modo cronômetro, zera os contadores
     cpi reg_temp, MODO_CRONOMETRO
     brne modo_relogio_voltar
 
@@ -142,19 +145,30 @@ modo_relogio_voltar:
     ret
 
 iniciar_cronometro:
-	rcall debounce
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_CRONOMETRO
     brne sair_start
 
-    ; Ativa contagem do cronômetro
-	lds reg_temp, cronometro_ativo 
+    ; Alterna o estado do cronômetro (ativa/pausa)
+    lds reg_temp, cronometro_ativo
     ldi reg_aux, 1
-	eor reg_temp, reg_aux
+    eor reg_temp, reg_aux
     sts cronometro_ativo, reg_temp
     rcall apitar_buzzer
-
 sair_start:
+    ret
+
+reset_cronometro:
+    ; Verifica se o cronômetro está parado
+    lds reg_temp, cronometro_ativo
+    cpi reg_temp, 0
+    brne sair_reset    ; Se o cronômetro estiver ativo, não reseta
+
+    clr reg_temp
+    sts segundos_cronometro, reg_temp
+    sts minutos_cronometro, reg_temp
+    rcall apitar_buzzer
+sair_reset:
     ret
 
 apitar_buzzer:
@@ -175,18 +189,19 @@ espera_buzzer:
     ret
 
 debounce:
-  ;           clock(MHz)   delay(ms)
-  ;               v           v
-  ldi r31, byte3(16 * 1000 * 150 / 5)
-  ldi r30, high (16 * 1000 * 150 / 5)
-  ldi r29, low  (16 * 1000 * 150 / 5)
+    ;           clock(MHz)   delay(ms)
+    ;               v           v
+    ldi r31, byte3(16 * 1000 * 20 / 5)
+    ldi r30, high (16 * 1000 * 20 / 5)
+    ldi r29, low  (16 * 1000 * 20 / 5)
 
-  subi r29, 1
-  sbci r30, 0
-  sbci r31, 0
-  brcc pc-3
+debounce_loop:
+    subi r29, 1
+    sbci r30, 0
+    sbci r31, 0
+    brcc debounce_loop
+    ret
 
-  ret
 ; ===================== ATUALIZAÇÃO DOS DISPLAYS ===================
 atualiza_displays:
     push reg_temp
