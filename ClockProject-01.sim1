@@ -2,9 +2,9 @@
 
 <item itemtype="MCU" CircId="mega328-1" mainComp="false" Show_id="true" Show_Val="false" Pos="-176,-148" rotation="-720" hflip="-1" vflip="1" label="mega328-1" idLabPos="0,-20" labelrot="0" valLabPos="-16,20" valLabRot="0" Frequency="16 MHz" Program="../../../../Documents/Atmel Studio/7.0/Clock/ClockMicrocontroller/Debug/ClockMicrocontroller.hex" Auto_Load="false" saveEepr="true" Logic_Symbol="false" Rst_enabled="false" Ext_Osc="false" Wdt_enabled="false" Clk_Out="false" MainMcu="true" SerialMon="-1" />
 
-<item itemtype="BcdTo7S" CircId="BcdTo7S-261" mainComp="false" Show_id="false" Show_Val="false" Pos="-120,-24" rotation="0" hflip="1" vflip="1" label="BcdTo7S-261" idLabPos="-16,-24" labelrot="0" valLabPos="-16,20" valLabRot="0" Input_High_V="2.5 V" Input_Low_V="2.5 V" Input_Imped="1000 MΩ" Invert_Inputs="false" Out_High_V="5 V" Out_Low_V="0 V" Out_Imped="40 Ω" Inverted="false" Open_Collector="false" pd_n="1 _Gates" Tpd_ps="10 ns" Tr_ps="3 ns" Tf_ps="4 ns" />
+<item itemtype="BcdTo7S" CircId="BcdTo7S-261" mainComp="false" Show_id="false" Show_Val="false" Pos="-120,-24" rotation="0" hflip="1" vflip="1" label="BcdTo7S-261" idLabPos="-16,-24" labelrot="0" valLabPos="-16,20" valLabRot="0" Input_High_V="2.5 V" Input_Low_V="2.5 V" Input_Imped="1000 MΩ" Invert_Inputs="false" Out_High_V="5 V" Out_Low_V="0 V" Out_Imped="10 Ω" Inverted="false" Open_Collector="false" pd_n="1 _Gates" Tpd_ps="10 ns" Tr_ps="3 ns" Tf_ps="4 ns" />
 
-<item itemtype="Seven Segment" CircId="Seven Segment-265" mainComp="false" Show_id="false" Show_Val="false" Pos="-28,-24" rotation="0" hflip="1" vflip="1" label="Seven Segment-265" idLabPos="20,-44" labelrot="0" valLabPos="-16,20" valLabRot="0" Color="Red" NumDisplays="4" Vertical_Pins="false" CommonCathode="true" Threshold="2.4 V" MaxCurrent="20 mA" Resistance="100 Ω" />
+<item itemtype="Seven Segment" CircId="Seven Segment-265" mainComp="false" Show_id="false" Show_Val="false" Pos="-28,-24" rotation="0" hflip="1" vflip="1" label="Seven Segment-265" idLabPos="20,-44" labelrot="0" valLabPos="-16,20" valLabRot="0" Color="Yellow" NumDisplays="4" Vertical_Pins="false" CommonCathode="true" Threshold="3 V" MaxCurrent="20 mA" Resistance="10 Ω" />
 
 <item itemtype="BJT" CircId="BJT-286" mainComp="false" Show_id="false" Show_Val="false" Pos="116,-156" rotation="-180" hflip="-1" vflip="1" label="BJT-286" idLabPos="18,0" labelrot="0" valLabPos="-16,20" valLabRot="0" PNP="false" Gain="100" Vcrit="0.670736 V" />
 
@@ -20,9 +20,9 @@
 
 <item itemtype="Resistor" CircId="Resistor-314" mainComp="false" Show_id="false" Show_Val="false" Pos="-112,-116" rotation="0" hflip="1" vflip="1" label="Resistor-314" idLabPos="-16,-24" labelrot="0" valLabPos="-16,6" valLabRot="0" Resistance="1 Ω" />
 
-<item itemtype="Resistor" CircId="Resistor-315" mainComp="false" Show_id="false" Show_Val="false" Pos="-112,-108" rotation="0" hflip="1" vflip="1" label="Resistor-315" idLabPos="-16,-24" labelrot="0" valLabPos="-16,6" valLabRot="0" Resistance="1 Ω" />
+<item itemtype="Resistor" CircId="Resistor-315" mainComp="false" Show_id="false" Show_Val="false" Pos="-112,-108" rotation="0" hflip="1" vflip="1" label="Resistor-315" idLabPos="-16,-24" labelrot="0" valLabPos="-16,6" valLabRot="0" Resistance="100 µΩ" />
 
-<item itemtype="Push" CircId="Push-318" mainComp="false" Show_id="true" Show_Val="false" Pos="-300,-80" rotation="0" hflip="1" vflip="1" label="MODE" idLabPos="-14.8413,-23.4207" labelrot="0" valLabPos="-16,20" valLabRot="0" Norm_Close="false" Poles="1" />
+<item itemtype="Push" CircId="Push-318" mainComp="false" ShowProp="Poles" Show_id="true" Show_Val="true" Pos="-300,-80" rotation="0" hflip="1" vflip="1" label="MODE" idLabPos="-14.8413,-23.4207" labelrot="0" valLabPos="-16,20" valLabRot="0" Norm_Close="false" Poles="1" />
 
 <item itemtype="AudioOut" CircId="AudioOut-319" mainComp="false" Show_id="false" Show_Val="false" Pos="-124,-200" rotation="-180" hflip="1" vflip="1" label="AudioOut-319" idLabPos="-20,-36" labelrot="0" valLabPos="-16,20" valLabRot="0" Buzzer="true" Impedance="8 Ω" Frequency="1 kHz" />
 
@@ -30,7 +30,7 @@
 
 <item itemtype="Push" CircId="Push-321" mainComp="false" Show_id="true" Show_Val="false" Pos="-300,16" rotation="0" hflip="1" vflip="1" label="RESET" idLabPos="-11.1089,-25.4651" labelrot="360" valLabPos="-16,20" valLabRot="0" Norm_Close="false" Poles="1" />
 
-<item itemtype="Resistor" CircId="Resistor-323" mainComp="false" ShowProp="Resistance" Show_id="false" Show_Val="true" Pos="164,-200" rotation="180" hflip="1" vflip="1" label="Resistor-323" idLabPos="-16,-24" labelrot="0" valLabPos="5.10054,-2.68846" valLabRot="180" Resistance="1 Ω" />
+<item itemtype="Resistor" CircId="Resistor-323" mainComp="false" ShowProp="Resistance" Show_id="false" Show_Val="true" Pos="164,-200" rotation="180" hflip="1" vflip="1" label="Resistor-323" idLabPos="-16,-24" labelrot="0" valLabPos="5.10054,-2.68846" valLabRot="180" Resistance="100 mΩ" />
 
 <item itemtype="Ground" CircId="Ground-324" mainComp="false" Show_id="false" Show_Val="false" Pos="208,-200" rotation="270" hflip="1" vflip="1" label="Ground-324" idLabPos="-16,8" labelrot="0" valLabPos="-16,20" valLabRot="0" />
 
@@ -69,8 +69,6 @@
 <item itemtype="Connector" uid="Connector-730" startpinid="Resistor-314-rPin" endpinid="BJT-288-base" pointList="-96,-116,32,-116,32,-156,40,-156" />
 
 <item itemtype="Connector" uid="Connector-731" startpinid="Resistor-315-rPin" endpinid="BJT-286-base" pointList="-96,-108,92,-108,92,-156,100,-156" />
-
-<item itemtype="Connector" uid="Connector-736" startpinid="BJT-286-collector" endpinid="Seven Segment-265-pin_commona" pointList="124,-140,124,36,-20,36,-20,8" />
 
 <item itemtype="Connector" uid="Connector-739" startpinid="BJT-288-collector" endpinid="Seven Segment-265-pin_commonb" pointList="64,-140,120,-140,120,28,12,28,12,8" />
 
@@ -118,14 +116,16 @@
 
 <item itemtype="Connector" uid="Connector-783" startpinid="Push-320-switch0pinN" endpinid="mega328-1-PORTC1" pointList="-284,-32,-264,-32,-264,-108,-216,-108" />
 
-<item itemtype="Connector" uid="Connector-784" startpinid="Push-318-switch0pinN" endpinid="mega328-1-PORTC2" pointList="-284,-80,-272,-80,-272,-116,-216,-116" />
-
 <item itemtype="Connector" uid="Connector-785" startpinid="Push-321-switch0pinN" endpinid="mega328-1-PORTC0" pointList="-284,16,-256,16,-256,-100,-216,-100" />
-
-<item itemtype="Connector" uid="Connector-786" startpinid="Ground-327-Gnd" endpinid="Push-318-pinP0" pointList="-336,-80,-316,-80" />
 
 <item itemtype="Connector" uid="Connector-787" startpinid="Ground-328-Gnd" endpinid="Push-320-pinP0" pointList="-336,-32,-316,-32" />
 
 <item itemtype="Connector" uid="Connector-788" startpinid="Ground-329-Gnd" endpinid="Push-321-pinP0" pointList="-336,16,-316,16" />
+
+<item itemtype="Connector" uid="Connector-736" startpinid="BJT-286-collector" endpinid="Seven Segment-265-pin_commona" pointList="124,-140,124,36,-20,36,-20,8" />
+
+<item itemtype="Connector" uid="Connector-786" startpinid="Ground-327-Gnd" endpinid="Push-318-pinP0" pointList="-336,-80,-316,-80" />
+
+<item itemtype="Connector" uid="Connector-784" startpinid="Push-318-switch0pinN" endpinid="mega328-1-PORTC2" pointList="-284,-80,-272,-80,-272,-116,-216,-116" />
 
 </circuit>
