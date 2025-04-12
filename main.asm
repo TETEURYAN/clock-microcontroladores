@@ -142,13 +142,15 @@ modo_relogio_voltar:
     ret
 
 iniciar_cronometro:
-	;rcall debounce
+	rcall debounce
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_CRONOMETRO
     brne sair_start
 
     ; Ativa contagem do cronômetro
-    ldi reg_temp, 1
+	lds reg_temp, cronometro_ativo 
+    ldi reg_aux, 1
+	eor reg_temp, reg_aux
     sts cronometro_ativo, reg_temp
     rcall apitar_buzzer
 
