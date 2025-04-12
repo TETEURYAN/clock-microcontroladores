@@ -1,33 +1,48 @@
-; Projeto da disciplina de Microcontroladores e AplicaÁıes
-; RelÛgio digital com display de 7 segmentos para minutos e segundos
+; Projeto da disciplina de Microcontroladores e Aplica√ß√µes
+; Rel√≥gio digital com display de 7 segmentos para minutos e segundos
 ; Data: 07/04/2025
-
-
 ; ===================== CONSTANTES DE HARDWARE =====================
-.equ PORT_BCD      = PORTB       ; PB0-PB3: Linhas de BCD para os 4 displays
-.equ DDR_BCD       = DDRB
-.equ PORT_CTRL     = PORTD       ; PD0-PD3: Controle de cada display (1 por vez)
-.equ DDR_CTRL      = DDRD
+.equ PORT_BCD       = PORTB       ; PB0-PB3: Linhas BCD
+.equ DDR_BCD        = DDRB
+.equ PORT_CTRL      = PORTD       ; PD0-PD3: Controle dos displays
+.equ DDR_CTRL       = DDRD
 
-; ===================== CONSTANTES DE TEMPORIZA«√O =================
-.equ VALOR_INICIAL_TIMER = 256 - (160)  ; 100 interrupÁıes/segundo
-.equ NUMERO_OVERFLOWS    = 100          ; 100 interrupÁıes = 1 segundo
+.equ DDRC_ADDR      = 0x27        ; Endere√ßo do registrador DDRC
+.equ PINC_ADDR      = 0x26        ; Endere√ßo do registrador PINC
+.equ PORTC_ADDR     = 0x28        ; Endere√ßo do registrador PORTC
+
+; ===================== CONSTANTES DE BOT√ïES =======================
+.equ BOTAO_MODE     = 2           ; PC2
+.equ BOTAO_START    = 1           ; PC1
+.equ BUZZER_BIT     = 3           ; PC3
+
+; ===================== CONSTANTES DE MODOS ========================
+.equ MODO_RELOGIO   = 0
+.equ MODO_CRONOMETRO = 1
+
+; ===================== CONSTANTES DE TEMPORIZA√á√ÉO =================
+.equ VALOR_INICIAL_TIMER = 256 - 160
+.equ NUMERO_OVERFLOWS    = 100
 
 ; ===================== NOMES DE REGISTRADORES =====================
-.def reg_temp      = r16
-.def reg_dezenas   = r17
-.def reg_unidades  = r18
-.def reg_aux       = r19
-.def reg_status    = r20
-.def reg_display   = r21
+.def reg_temp       = r16
+.def reg_dezenas    = r17
+.def reg_unidades   = r18
+.def reg_aux        = r19
+.def reg_status     = r20
+.def reg_display    = r21
 
-; ===================== ALOCA«√O DE VARI¡VEIS ======================
+; ===================== VARI√ÅVEIS EM MEM√ìRIA =======================
 .dseg
-segundos:            .byte 1
-minutos:             .byte 1
-contador_overflow:   .byte 1
+segundos_relogio:       .byte 1
+minutos_relogio:        .byte 1
+segundos_cronometro:    .byte 1
+minutos_cronometro:     .byte 1
+contador_overflow:      .byte 1
+modo_atual:             .byte 1
+cronometro_ativo:       .byte 1
 
-; ===================== VETORES DE INTERRUP«√O =====================
+; ===================== VETORES DE INTERRUP√á√ÉO =====================
 .cseg
 .org 0x0000
     jmp inicio
@@ -35,7 +50,6 @@ contador_overflow:   .byte 1
     jmp trata_overflow
 
 ; ===================== PROGRAMA PRINCIPAL =========================
-.cseg
 .org 0x0034
 inicio:
     ; Inicializa pilha
@@ -44,58 +58,118 @@ inicio:
     ldi reg_temp, low(RAMEND)
     out SPL, reg_temp
 
-    ; Configura portas como saÌda
+    ; Inicializa portas
     ldi reg_temp, 0x0F
-    out DDR_BCD, reg_temp        ; PB0-PB3 como saÌda (BCD)
-    out DDR_CTRL, reg_temp       ; PD0-PD3 como saÌda (controle de displays)
+    out DDR_BCD, reg_temp
+    out DDR_CTRL, reg_temp
 
-	; Configura PC0, PC1 e PC2 como entrada (botıes) e PC3 como saÌda (buzzer)
-    ldi reg_temp, 0b00001000     ; PC3 saÌda (buzzer)
-    out DDRC, reg_temp           ; PC0-PC2 s„o entradas por padr„o (0)
+    ; Configura PC1 como entrada, PC2 como entrada, PC3 como sa√≠da (buzzer)
+    lds reg_temp, DDRC_ADDR
+    andi reg_temp, ~(1 << BOTAO_MODE)
+    andi reg_temp, ~(1 << BOTAO_START)
+    ori reg_temp, (1 << BUZZER_BIT)
+    sts DDRC_ADDR, reg_temp
 
-	; Ativa resistores de pull-up nos botıes (PC0-PC2)
-    ldi reg_temp, 0b00000111     ; PC0-PC2
-    out PORTC, reg_temp
+    ; Habilita pull-up para bot√µes
+    lds reg_temp, PORTC_ADDR
+    ori reg_temp, (1 << BOTAO_MODE) | (1 << BOTAO_START)
+    sts PORTC_ADDR, reg_temp
 
-    ; Zera contadores
+    ; Zera contadores e modo
     clr reg_temp
-    sts segundos, reg_temp
-    sts minutos, reg_temp
+    sts segundos_relogio, reg_temp
+    sts minutos_relogio, reg_temp
+    sts segundos_cronometro, reg_temp
+    sts minutos_cronometro, reg_temp
     sts contador_overflow, reg_temp
+    sts modo_atual, reg_temp
+    sts cronometro_ativo, reg_temp
 
-    ; Configura Timer0
-    ldi reg_temp, (1<<CS02)|(1<<CS00)  ; Prescaler de 1024
+    ; Configura timer
+    ldi reg_temp, (1<<CS02)|(1<<CS00)
     out TCCR0B, reg_temp
     ldi reg_temp, VALOR_INICIAL_TIMER
     out TCNT0, reg_temp
-    ldi reg_temp, (1<<TOIE0)           ; Habilita interrupÁ„o por overflow
+    ldi reg_temp, (1<<TOIE0)
     sts TIMSK0, reg_temp
 
-    sei  ; Habilita interrupÁıes globais
+    sei
 
 loop_principal:
+    rcall verifica_botoes
     rcall atualiza_displays
     rjmp loop_principal
 
-; ================= ROTINA: DIVIS√O POR 10 ========================
-; Entrada: reg_temp = valor de 0 a 99
-; SaÌda:  reg_dezenas = dezenas, reg_unidades = unidades
-dividir_por_10:
+; ===================== VERIFICA√á√ÉO DE BOT√ïES ======================
+verifica_botoes:
+    push reg_temp
     push reg_aux
-    ldi reg_unidades, 10
-    clr reg_dezenas
-div_loop:
-    cp reg_temp, reg_unidades
-    brlo div_pronto
-    sub reg_temp, reg_unidades
-    inc reg_dezenas
-    rjmp div_loop
-div_pronto:
-    mov reg_unidades, reg_temp  ; unidades
+
+    ; L√™ PINC
+    lds reg_temp, PINC_ADDR
+
+    ; Verifica bot√£o MODE (PC2)
+    sbrs reg_temp, BOTAO_MODE
+    rcall alternar_modo
+
+    ; Verifica bot√£o START (PC1)
+    sbrs reg_temp, BOTAO_START
+    rcall iniciar_cronometro
+
     pop reg_aux
+    pop reg_temp
     ret
 
-; =============== ATUALIZA«√O DOS DISPLAYS ======================
+alternar_modo:
+    lds reg_temp, modo_atual
+	ldi reg_aux, 0x01
+	eor reg_temp, reg_aux
+    sts modo_atual, reg_temp
+
+    ; Zera cron√¥metro ao entrar
+    cpi reg_temp, MODO_CRONOMETRO
+    brne modo_relogio_voltar
+
+    clr reg_aux
+    sts segundos_cronometro, reg_aux
+    sts minutos_cronometro, reg_aux
+    sts cronometro_ativo, reg_aux
+
+modo_relogio_voltar:
+    rcall apitar_buzzer
+    ret
+
+iniciar_cronometro:
+    lds reg_temp, modo_atual
+    cpi reg_temp, MODO_CRONOMETRO
+    brne sair_start
+
+    ; Ativa contagem do cron√¥metro
+    ldi reg_temp, 1
+    sts cronometro_ativo, reg_temp
+    rcall apitar_buzzer
+
+sair_start:
+    ret
+
+apitar_buzzer:
+    push reg_temp
+    lds reg_temp, PORTC_ADDR
+    ori reg_temp, (1 << BUZZER_BIT)
+    sts PORTC_ADDR, reg_temp
+
+    ldi reg_temp, 50
+espera_buzzer:
+    dec reg_temp
+    brne espera_buzzer
+
+    lds reg_temp, PORTC_ADDR
+    andi reg_temp, ~(1 << BUZZER_BIT)
+    sts PORTC_ADDR, reg_temp
+    pop reg_temp
+    ret
+
+; ===================== ATUALIZA√á√ÉO DOS DISPLAYS ===================
 atualiza_displays:
     push reg_temp
     push reg_dezenas
@@ -107,46 +181,60 @@ atualiza_displays:
     push r24
     push r25
 
-    ; ------ LÍ minutos e segundos uma vez ------
-    lds reg_temp, segundos
-    rcall dividir_por_10
-    mov r22, reg_unidades     ; Segundos unidade
-    mov r23, reg_dezenas      ; Segundos dezena
+    ; Escolhe entre rel√≥gio ou cron√¥metro
+    lds reg_temp, modo_atual
+    cpi reg_temp, MODO_RELOGIO
+    breq usa_relogio
 
-    lds reg_temp, minutos
+    ; Cron√¥metro
+    lds reg_temp, segundos_cronometro
     rcall dividir_por_10
-    mov r24, reg_unidades     ; Minutos unidade
-    mov r25, reg_dezenas      ; Minutos dezena
+    mov r22, reg_unidades
+    mov r23, reg_dezenas
 
-    ; Display 0 - Segundo unidade (PD0)
+    lds reg_temp, minutos_cronometro
+    rcall dividir_por_10
+    mov r24, reg_unidades
+    mov r25, reg_dezenas
+    rjmp mostra
+
+usa_relogio:
+    lds reg_temp, segundos_relogio
+    rcall dividir_por_10
+    mov r22, reg_unidades
+    mov r23, reg_dezenas
+
+    lds reg_temp, minutos_relogio
+    rcall dividir_por_10
+    mov r24, reg_unidades
+    mov r25, reg_dezenas
+
+mostra:
+    ; Mostra os 4 displays (unidade/decimal seg e min)
     mov reg_temp, r22
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b00000001
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Display 1 - Segundo dezena (PD1)
     mov reg_temp, r23
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b00000010
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Display 2 - Minuto unidade (PD2)
     mov reg_temp, r24
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b00000100
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Display 3 - Minuto dezena (PD3)
     mov reg_temp, r25
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b00001000
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Apaga todos os displays ao final
     clr reg_temp
     out PORT_CTRL, reg_temp
 
@@ -161,11 +249,27 @@ atualiza_displays:
     pop reg_temp
     ret
 
-; ============ ATRASO ENTRE TROCAS DE DISPLAY ============
+; ===================== DIVIS√ÉO POR 10 ============================
+dividir_por_10:
+    push reg_aux
+    ldi reg_unidades, 10
+    clr reg_dezenas
+div_loop:
+    cp reg_temp, reg_unidades
+    brlo div_pronto
+    sub reg_temp, reg_unidades
+    inc reg_dezenas
+    rjmp div_loop
+div_pronto:
+    mov reg_unidades, reg_temp
+    pop reg_aux
+    ret
+
+; ===================== ATRASO DE DISPLAY ========================
 atraso_display:
-    ldi reg_aux, 40           ; LaÁo externo reduzido
+    ldi reg_aux, 50
 loop_externo:
-    ldi reg_display, 50       ; LaÁo interno reduzido
+    ldi reg_display, 60
 loop_interno:
     dec reg_display
     brne loop_interno
@@ -173,47 +277,64 @@ loop_interno:
     brne loop_externo
     ret
 
-; ============ TRATAMENTO DE OVERFLOW ====================
+; ===================== TRATAMENTO DE OVERFLOW ===================
 trata_overflow:
     push reg_temp
     push reg_dezenas
     in reg_status, SREG
     push reg_status
 
-    ; Reinicializa Timer
     ldi reg_temp, VALOR_INICIAL_TIMER
     out TCNT0, reg_temp
 
-    ; Incrementa contador de overflow
     lds reg_temp, contador_overflow
     inc reg_temp
     sts contador_overflow, reg_temp
     cpi reg_temp, NUMERO_OVERFLOWS
     brne fim_overflow
 
-    ; Zera contador de overflow
     clr reg_temp
     sts contador_overflow, reg_temp
 
-    ; Incrementa segundos
-    lds reg_dezenas, segundos
+    ; Incrementa rel√≥gio
+    lds reg_dezenas, segundos_relogio
     inc reg_dezenas
     cpi reg_dezenas, 60
-    brlo salva_seg
-
-    ; Se passou de 59, zera segundos e incrementa minutos
+    brlo salva_segundos_relogio
     clr reg_dezenas
-    lds reg_unidades, minutos
+    lds reg_unidades, minutos_relogio
     inc reg_unidades
     cpi reg_unidades, 60
-    brlo salva_min
+    brlo salva_minutos_relogio
     clr reg_unidades
 
-salva_min:
-    sts minutos, reg_unidades
+salva_minutos_relogio:
+    sts minutos_relogio, reg_unidades
 
-salva_seg:
-    sts segundos, reg_dezenas
+salva_segundos_relogio:
+    sts segundos_relogio, reg_dezenas
+
+    ; Incrementa cron√¥metro se ativo
+    lds reg_temp, cronometro_ativo
+    cpi reg_temp, 1
+    brne fim_overflow
+
+    lds reg_dezenas, segundos_cronometro
+    inc reg_dezenas
+    cpi reg_dezenas, 60
+    brlo salva_segundos_cronometro
+    clr reg_dezenas
+    lds reg_unidades, minutos_cronometro
+    inc reg_unidades
+    cpi reg_unidades, 60
+    brlo salva_minutos_cronometro
+    clr reg_unidades
+
+salva_minutos_cronometro:
+    sts minutos_cronometro, reg_unidades
+
+salva_segundos_cronometro:
+    sts segundos_cronometro, reg_dezenas
 
 fim_overflow:
     pop reg_status
