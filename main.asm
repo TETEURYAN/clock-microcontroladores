@@ -106,6 +106,7 @@ verifica_botoes:
     push reg_aux
 
     ; Lê PINC
+	;rcall debounce
     lds reg_temp, PINC_ADDR
 
     ; Verifica botão MODE (PC2)
@@ -121,6 +122,7 @@ verifica_botoes:
     ret
 
 alternar_modo:
+	rcall debounce
     lds reg_temp, modo_atual
 	ldi reg_aux, 0x01
 	eor reg_temp, reg_aux
@@ -140,6 +142,7 @@ modo_relogio_voltar:
     ret
 
 iniciar_cronometro:
+	;rcall debounce
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_CRONOMETRO
     brne sair_start
@@ -169,6 +172,19 @@ espera_buzzer:
     pop reg_temp
     ret
 
+debounce:
+  ;           clock(MHz)   delay(ms)
+  ;               v           v
+  ldi r31, byte3(16 * 1000 * 150 / 5)
+  ldi r30, high (16 * 1000 * 150 / 5)
+  ldi r29, low  (16 * 1000 * 150 / 5)
+
+  subi r29, 1
+  sbci r30, 0
+  sbci r31, 0
+  brcc pc-3
+
+  ret
 ; ===================== ATUALIZAÇÃO DOS DISPLAYS ===================
 atualiza_displays:
     push reg_temp
@@ -267,7 +283,7 @@ div_pronto:
 
 ; ===================== ATRASO DE DISPLAY ========================
 atraso_display:
-    ldi reg_aux, 50
+    ldi reg_aux, 20
 loop_externo:
     ldi reg_display, 60
 loop_interno:
