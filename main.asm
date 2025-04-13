@@ -1,5 +1,5 @@
 ; Relógio Digital Completo para ATmega328P
-;Projeto da disciplina de Microcontroladores e Aplicações do semestre 2024.2
+; Projeto da disciplina de Microcontroladores e Aplicações do semestre 2024.2
 ; Matheus Ryan, Lucas Heron e Rafael Luciano
 ; 07/04/2025
 ; ================================================================
@@ -281,16 +281,30 @@ reset_ajuste:
     breq ajustar_dezena_min
     ret
     
+; --- Sub-rotina Corrigida: ajustar_unidade_seg ---
 ajustar_unidade_seg:
-    ; Incrementa unidade de segundos (0-9)
+    ; Carrega o valor total de segundos
     lds reg_temp, segundos_relogio
-    inc reg_temp
-    cpi reg_temp, 10
-    brlt salvar_segundos
-    ldi reg_temp, 0
-salvar_segundos:
-    sts segundos_relogio, reg_temp
-    rcall apitar_buzzer
+    
+    ; Extrai dezena e unidade usando divisão por 10
+    rcall dividir_por_10
+    mov reg_dezenas, reg_dezenas    ; Preserva a dezena atual
+    mov reg_unidades, reg_unidades  ; Carrega a unidade atual
+    
+    ; Incrementa a unidade
+    inc reg_unidades
+    cpi reg_unidades, 10
+    brlt combinar_segundos
+    ldi reg_unidades, 0             ; Reseta unidade para 0 se atingir 10
+    
+combinar_segundos:
+    ; Combina dezena e unidade: total = dezena * 10 + unidade
+    ldi reg_aux, 10
+    mul reg_dezenas, reg_aux        ; Multiplica dezena por 10
+    mov reg_temp, r0                ; Resultado da multiplicação em r0
+    add reg_temp, reg_unidades      ; Adiciona a nova unidade
+    sts segundos_relogio, reg_temp  ; Salva o novo valor total
+    rcall apitar_buzzer             ; Feedback audível
     ret
     
 ajustar_dezena_seg:
@@ -301,18 +315,35 @@ ajustar_dezena_seg:
     cpi reg_temp, 60
     brlt salvar_segundos
     subi reg_temp, 60
-    rjmp salvar_segundos
-    
-ajustar_unidade_min:
-    ; Incrementa unidade de minutos (0-9)
-    lds reg_temp, minutos_relogio
-    inc reg_temp
-    cpi reg_temp, 10
-    brlt salvar_minutos
-    ldi reg_temp, 0
-salvar_minutos:
-    sts minutos_relogio, reg_temp
+salvar_segundos:
+    sts segundos_relogio, reg_temp
     rcall apitar_buzzer
+    ret
+    
+; --- Sub-rotina Corrigida: ajustar_unidade_min ---
+ajustar_unidade_min:
+    ; Carrega o valor total de minutos
+    lds reg_temp, minutos_relogio
+    
+    ; Extrai dezena e unidade usando divisão por 10
+    rcall dividir_por_10
+    mov reg_dezenas, reg_dezenas    ; Preserva a dezena atual
+    mov reg_unidades, reg_unidades  ; Carrega a unidade atual
+    
+    ; Incrementa a unidade
+    inc reg_unidades
+    cpi reg_unidades, 10
+    brlt combinar_minutos
+    ldi reg_unidades, 0             ; Reseta unidade para 0 se atingir 10
+    
+combinar_minutos:
+    ; Combina dezena e unidade: total = dezena * 10 + unidade
+    ldi reg_aux, 10
+    mul reg_dezenas, reg_aux        ; Multiplica dezena por 10
+    mov reg_temp, r0                ; Resultado da multiplicação em r0
+    add reg_temp, reg_unidades      ; Adiciona a nova unidade
+    sts minutos_relogio, reg_temp   ; Salva o novo valor total
+    rcall apitar_buzzer             ; Feedback audível
     ret
     
 ajustar_dezena_min:
@@ -323,7 +354,10 @@ ajustar_dezena_min:
     cpi reg_temp, 60
     brlt salvar_minutos
     subi reg_temp, 60
-    rjmp salvar_minutos
+salvar_minutos:
+    sts minutos_relogio, reg_temp
+    rcall apitar_buzzer
+    ret
 
 ; ===================== ROTINA DO BUZZER ===========================
 apitar_buzzer:
@@ -361,10 +395,10 @@ debounce_loop:
     ret
 
 debounce2:
-    ; Debounce rápido de ~10ms (para botão START)
-    ldi r31, byte3(16 * 1000 * 10 / 5)
-    ldi r30, high(16 * 1000 * 10 / 5)
-    ldi r29, low(16 * 1000 * 10 / 5)
+    ; Debounce rápido de ~30ms (para botão START)
+    ldi r31, byte3(16 * 1000 * 40 / 5)
+    ldi r30, high(16 * 1000 * 40 / 5)
+    ldi r29, low(16 * 1000 * 40 / 5)
 
 debounce2_loop:
     subi r29, 1
@@ -422,82 +456,119 @@ exibir_cronometro:
     rjmp mostrar_displays
     
 exibir_relogio_ajuste:
-    ; Prepara dados do relógio (modo ajuste)
+    ; Carrega os valores normais dos dígitos
     lds reg_temp, segundos_relogio
     rcall dividir_por_10
-    mov r22, reg_unidades  ; Unid. segundos
-    mov r23, reg_dezenas   ; Dez. segundos
+    mov r22, reg_unidades
+    mov r23, reg_dezenas
 
     lds reg_temp, minutos_relogio
     rcall dividir_por_10
-    mov r24, reg_unidades  ; Unid. minutos
-    mov r25, reg_dezenas   ; Dez. minutos
-
-    ; Controle do piscar (0.3s ligado, 0.3s desligado)
-    lds reg_temp, contador_pisca
-    cpi reg_temp, INTERVALO_PISCA/2
-    brsh mostrar_tudo      ; Mostra tudo se na metade superior do intervalo
+    mov r24, reg_unidades
+    mov r25, reg_dezenas
     
-    ; Decide qual dígito piscar baseado na posição de ajuste
-    lds reg_temp, posicao_ajuste
-    cpi reg_temp, 0
-    breq piscar_unidade_seg
-    cpi reg_temp, 1
-    breq piscar_dezena_seg
-    cpi reg_temp, 2
-    breq piscar_unidade_min
-    cpi reg_temp, 3
-    breq piscar_dezena_min
-    rjmp mostrar_displays
-
-piscar_unidade_seg:
-    ldi r22, 0x00         ; Apaga unidade de segundos
-    rjmp mostrar_displays
+    ; Incrementa display_piscando para controlar o piscar
+    lds reg_temp, display_piscando
+    inc reg_temp
+    sts display_piscando, reg_temp
     
-piscar_dezena_seg:
-    ldi r23, 0x00         ; Apaga dezena de segundos
-    rjmp mostrar_displays
-    
-piscar_unidade_min:
-    ldi r24, 0x00         ; Apaga unidade de minutos
-    rjmp mostrar_displays
-    
-piscar_dezena_min:
-    ldi r25, 0x00         ; Apaga dezena de minutos
-
-mostrar_tudo:
+    ; O piscar será tratado em mostrar_displays
     rjmp mostrar_displays
 
 mostrar_displays:
-    ; Exibe unidade de segundos (display 1)
+    ; Dígito 1: Unidades de segundos (r22, posicao_ajuste = 0)
+    lds reg_aux, modo_atual
+    cpi reg_aux, MODO_AJUSTE
+    brne set_normal1
+    lds reg_aux, posicao_ajuste
+    cpi reg_aux, 0
+    brne set_normal1
+    lds reg_aux, display_piscando
+    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10 (piscar mais rápido)
+    breq set_blank1
+set_normal1:
     mov reg_temp, r22
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000001  ; Ativa display 1
+    ldi reg_temp, 0b00000001
+    rjmp set_ctrl1
+set_blank1:
+    clr reg_temp
+    out PORT_BCD, reg_temp  ; Limpa PORT_BCD para garantir que nenhum segmento acenda
+    ldi reg_temp, 0
+set_ctrl1:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Exibe dezena de segundos (display 2)
+    ; Dígito 2: Dezenas de segundos (r23, posicao_ajuste = 1)
+    lds reg_aux, modo_atual
+    cpi reg_aux, MODO_AJUSTE
+    brne set_normal2
+    lds reg_aux, posicao_ajuste
+    cpi reg_aux, 1
+    brne set_normal2
+    lds reg_aux, display_piscando
+    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    breq set_blank2
+set_normal2:
     mov reg_temp, r23
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000010  ; Ativa display 2
+    ldi reg_temp, 0b00000010
+    rjmp set_ctrl2
+set_blank2:
+    clr reg_temp
+    out PORT_BCD, reg_temp  ; Limpa PORT_BCD
+    ldi reg_temp, 0
+set_ctrl2:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Exibe unidade de minutos (display 3)
+    ; Dígito 3: Unidades de minutos (r24, posicao_ajuste = 2)
+    lds reg_aux, modo_atual
+    cpi reg_aux, MODO_AJUSTE
+    brne set_normal3
+    lds reg_aux, posicao_ajuste
+    cpi reg_aux, 2
+    brne set_normal3
+    lds reg_aux, display_piscando
+    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    breq set_blank3
+set_normal3:
     mov reg_temp, r24
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000100  ; Ativa display 3
+    ldi reg_temp, 0b00000100
+    rjmp set_ctrl3
+set_blank3:
+    clr reg_temp
+    out PORT_BCD, reg_temp  ; Limpa PORT_BCD
+    ldi reg_temp, 0
+set_ctrl3:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Exibe dezena de minutos (display 4)
+    ; Dígito 4: Dezenas de minutos (r25, posicao_ajuste = 3)
+    lds reg_aux, modo_atual
+    cpi reg_aux, MODO_AJUSTE
+    brne set_normal4
+    lds reg_aux, posicao_ajuste
+    cpi reg_aux, 3
+    brne set_normal4
+    lds reg_aux, display_piscando
+    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    breq set_blank4
+set_normal4:
     mov reg_temp, r25
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00001000  ; Ativa display 4
+    ldi reg_temp, 0b00001000
+    rjmp set_ctrl4
+set_blank4:
+    clr reg_temp
+    out PORT_BCD, reg_temp  ; Limpa PORT_BCD
+    ldi reg_temp, 0
+set_ctrl4:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Desativa todos os displays
+    ; Limpa PORT_CTRL
     clr reg_temp
     out PORT_CTRL, reg_temp
 
