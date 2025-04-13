@@ -5,27 +5,32 @@
 ; ================================================================
 
 ; ===================== CONSTANTES DE HARDWARE =====================
+; Define as portas de saída para o BCD e de controle para o display
 .equ PORT_BCD       = PORTB       ; PB0-PB3: Saída BCD para os displays
 .equ DDR_BCD        = DDRB        ; Registrador de direção do PORTB
 .equ PORT_CTRL      = PORTD       ; PD0-PD3: Controle dos displays
 .equ DDR_CTRL       = DDRD        ; Registrador de direção do PORTD
 
+; Define a porta dos botões
 .equ DDRC_ADDR      = 0x27        ; Endereço do registrador DDRC
 .equ PINC_ADDR      = 0x26        ; Endereço do registrador PINC
 .equ PORTC_ADDR     = 0x28        ; Endereço do registrador PORTC
 
 ; ===================== CONSTANTES DE BOTÕES =======================
+; Define o pino para cada botão
 .equ BOTAO_MODE     = 2           ; PC2 - Botão para alternar modos
 .equ BOTAO_START    = 1           ; PC1 - Botão Start/Stop
 .equ BOTAO_RESET    = 0           ; PC0 - Botão Reset/Ajuste
 .equ BUZZER_BIT     = 3           ; PC3 - Saída para o buzzer
 
 ; ===================== CONSTANTES DE MODOS ========================
+; Define o valor de cada modo
 .equ MODO_RELOGIO    = 0          ; Modo relógio normal
 .equ MODO_CRONOMETRO = 1          ; Modo cronômetro
 .equ MODO_AJUSTE     = 2          ; Modo ajuste de hora
 
 ; ===================== CONSTANTES DE TEMPORIZAÇÃO =================
+; Define o tempo que o timer irá contar para dar 1 segundo
 .equ VALOR_INICIAL_TIMER = 256 - 160 ; Valor inicial para timer0 (10ms)
 .equ NUMERO_OVERFLOWS    = 100       ; 100 overflows = 1 segundo
 .equ INTERVALO_PISCA     = 50        ; 0.3s para piscar dígitos no ajuste
@@ -55,9 +60,9 @@ start_pressionado:      .byte 1   ; Estado do botão START
 ; ===================== VETORES DE INTERRUPÇÃO =====================
 .cseg
 .org 0x0000
-    jmp inicio                   ; Reset vector
+    jmp inicio                   
 .org OVF0addr
-    jmp trata_overflow           ; Timer0 overflow interrupt
+    jmp trata_overflow           ; Vetor de interrupção de overflow do Timer0
 
 ; ===================== PROGRAMA PRINCIPAL =========================
 .org 0x0034
@@ -90,13 +95,13 @@ inicio:
     
     ; Configuração dos botões e buzzer
     lds reg_temp, DDRC_ADDR
-    andi reg_temp, ~((1<<BOTAO_MODE)|(1<<BOTAO_START)|(1<<BOTAO_RESET))
-    ori reg_temp, (1<<BUZZER_BIT)
+    andi reg_temp, ~((1<<BOTAO_MODE)|(1<<BOTAO_START)|(1<<BOTAO_RESET)) ; Configura os botões como entrada (0)
+    ori reg_temp, (1<<BUZZER_BIT)	; Define botão do Buzzer como saída (1)
     sts DDRC_ADDR, reg_temp
     
     ; Ativa pull-ups para os botões
-    ldi reg_temp, (1<<BOTAO_MODE)|(1<<BOTAO_START)|(1<<BOTAO_RESET)
-    sts PORTC_ADDR, reg_temp
+    ldi reg_temp, (1<<BOTAO_MODE)|(1<<BOTAO_START)|(1<<BOTAO_RESET) ; Carrega 0b00000111 em reg_temp, ativando pull-ups internos nos pinos PC2, PC1 e PC0
+    sts PORTC_ADDR, reg_temp		; Configura PORTC definindo que os botões tenham nível lógico alto quando não pressionados.
     
     ; Inicialização das variáveis
     clr reg_temp
@@ -113,12 +118,12 @@ inicio:
     sts start_pressionado, reg_temp
 
     ; Configuração do Timer0 (prescaler 1024, overflow interrupt)
-    ldi reg_temp, (1<<CS02)|(1<<CS00)
-    out TCCR0B, reg_temp
+    ldi reg_temp, (1<<CS02)|(1<<CS00)	; 101
+    out TCCR0B, reg_temp				; Registrador de controle TCCR0B do Timer0
     ldi reg_temp, VALOR_INICIAL_TIMER
-    out TCNT0, reg_temp
-    ldi reg_temp, (1<<TOIE0)
-    sts TIMSK0, reg_temp
+    out TCNT0, reg_temp					; Define contador do timer com valor inicial 96
+    ldi reg_temp, (1<<TOIE0)			; Ativa a interrupção de overflow do Timer0 
+    sts TIMSK0, reg_temp				; Habilita a interrupção no registrador TIMSK0
 
     sei                           ; Habilita interrupções globais
 
@@ -164,18 +169,20 @@ alternar_modo:
 salvar_modo:
     sts modo_atual, reg_temp      ; Armazena novo modo
 
+	; Carrega msg do modo 1
 	push ZL
 	push ZH
 	ldi ZL, low(2*msg_modo1)
 	ldi ZH, high(2*msg_modo1)
 
+	; Desvia para o modo apropriado
 	cpi reg_temp, MODO_CRONOMETRO
 	breq modo2_msg
 	cpi reg_temp, MODO_AJUSTE
 	breq modo3_msg
 
 modo1_msg:
-	rcall uart_enviar_string
+	rcall uart_enviar_string			; Envia mensagem modo 1
 	rjmp fim_msg
 
 modo2_msg:
@@ -214,7 +221,7 @@ config_modo_cronometro:
 config_modo_ajuste:
     clr reg_aux                   ; Inicia ajuste na posição 0
     sts posicao_ajuste, reg_aux
-    sts contador_pisca, reg_aux
+    sts contador_pisca, reg_aux	  ; Variável que determina a duração do pisca
     
 fim_alternar_modo:
     rcall apitar_buzzer           ; Feedback audível
@@ -226,9 +233,9 @@ tratar_start:
     
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
-    breq start_cronometro         ; Modo cronômetro
+    breq start_cronometro         ; Vai pro modo cronômetro
     cpi reg_temp, MODO_AJUSTE
-    breq start_ajuste             ; Modo ajuste
+    breq start_ajuste             ; Vai pro modo ajuste
     
     ret                           ; Nada a fazer em outros modos
     
@@ -266,9 +273,9 @@ start_confirma_pressionado:
     push ZH
     ldi ZL, low(2*msg_modo2_start)
     ldi ZH, high(2*msg_modo2_start)
-    cpi reg_temp, 0
-    breq send_zero_msg
-    rcall uart_enviar_string
+    cpi reg_temp, 0					; Vê se cronometro tá zerado
+    breq send_zero_msg				; Se tiver, manda a msg de 0
+    rcall uart_enviar_string		; Se não, envia a de start
     rjmp fim_start_msg
 send_zero_msg:
     ldi ZL, low(2*msg_modo2_zero)
@@ -311,18 +318,25 @@ salvar_posicao_ajuste:
     cpi reg_temp, 2
     breq msg_uni_min
     
+; Mensagem da posição da dezena dos minutos
 msg_dez_min:
     ldi ZL, low(2*msg_modo3_dez_min)
     ldi ZH, high(2*msg_modo3_dez_min)
     rjmp send_ajuste_msg
+
+; Mensagem da posição da unidade dos segundos
 msg_uni_seg:
     ldi ZL, low(2*msg_modo3_uni_seg)
     ldi ZH, high(2*msg_modo3_uni_seg)
     rjmp send_ajuste_msg
+
+; Mensagem da posição da dezena dos segundos
 msg_dez_seg:
     ldi ZL, low(2*msg_modo3_dez_seg)
     ldi ZH, high(2*msg_modo3_dez_seg)
     rjmp send_ajuste_msg
+
+; Mensagem da posição da unidade dos minutos
 msg_uni_min:
     ldi ZL, low(2*msg_modo3_uni_min)
     ldi ZH, high(2*msg_modo3_uni_min)
@@ -341,9 +355,9 @@ tratar_reset:
     
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
-    breq reset_cronometro         ; Modo cronômetro
+    breq reset_cronometro         ; Vai pro modo cronômetro
     cpi reg_temp, MODO_AJUSTE
-    breq reset_ajuste             ; Modo ajuste
+    breq reset_ajuste             ; Vai pro modo ajuste
     
     ret                           ; Nada a fazer em outros modos
     
@@ -395,8 +409,8 @@ ajustar_unidade_seg:
     
     ; Incrementa a unidade
     inc reg_unidades
-    cpi reg_unidades, 10
-    brlt combinar_segundos
+    cpi reg_unidades, 10			; Compara com 10
+    brlt combinar_segundos			; Se for menor, vai combinar (Dezena * 10 + Unidade)
     ldi reg_unidades, 0             ; Reseta unidade para 0 se atingir 10
     
 combinar_segundos:
@@ -433,8 +447,8 @@ ajustar_unidade_min:
     
     ; Incrementa a unidade
     inc reg_unidades
-    cpi reg_unidades, 10
-    brlt combinar_minutos
+    cpi reg_unidades, 10			; Compara com 10
+    brlt combinar_minutos			; Se for menor, vai combinar (Dezena * 10 + Unidade)
     ldi reg_unidades, 0             ; Reseta unidade para 0 se atingir 10
     
 combinar_minutos:
@@ -464,8 +478,8 @@ salvar_minutos:
 apitar_buzzer:
     push reg_temp
     ; Ativa o buzzer
-    lds reg_temp, PORTC_ADDR
-    ori reg_temp, (1 << BUZZER_BIT)
+    lds reg_temp, PORTC_ADDR			; Carrega o estado atual de PORTC
+    ori reg_temp, (1 << BUZZER_BIT)		; Ativa o bit 3 (PC3) para ligar o buzzer.
     sts PORTC_ADDR, reg_temp
 
     ; Pequeno delay para o bip
@@ -476,14 +490,18 @@ espera_buzzer:
 
     ; Desativa o buzzer
     lds reg_temp, PORTC_ADDR
-    andi reg_temp, ~(1 << BUZZER_BIT)
+    andi reg_temp, ~(1 << BUZZER_BIT)	; Desativa o bit 3 para desligar o buzzer
     sts PORTC_ADDR, reg_temp
     pop reg_temp
     ret
 
 ; ===================== ROTINAS DE DEBOUNCE ========================
+; Configura um contador de 32 bits para 300ms de delay
+; Repete enquanto o carry não for setado
 debounce:
     ; Debounce de ~300ms
+	;           clock(MHz)   delay(ms)
+	;               v           v
     ldi r31, byte3(16 * 1000 * 300 / 5)
     ldi r30, high(16 * 1000 * 300 / 5)
     ldi r29, low(16 * 1000 * 300 / 5)
@@ -510,6 +528,7 @@ debounce2_loop:
 
 ; ===================== ROTINA DE ATUALIZAÇÃO DE DISPLAYS =========
 atualiza_displays:
+	; Salva os registradores usados na pilha
     push reg_temp
     push reg_dezenas
     push reg_unidades
@@ -520,7 +539,7 @@ atualiza_displays:
     push r24
     push r25
 
-    ; Seleciona dados para exibição conforme o modo
+    ; Exibe relógio de acordo com o modo atual
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_RELOGIO
     breq exibir_relogio
@@ -579,25 +598,25 @@ exibir_relogio_ajuste:
 mostrar_displays:
     ; Dígito 1: Unidades de segundos (r22, posicao_ajuste = 0)
     lds reg_aux, modo_atual
-    cpi reg_aux, MODO_AJUSTE
-    brne set_normal1
+    cpi reg_aux, MODO_AJUSTE		; Vê se tá no modo ajuste
+    brne set_normal1				; Se não, só mostra normalmente
     lds reg_aux, posicao_ajuste
-    cpi reg_aux, 0
-    brne set_normal1
-    lds reg_aux, display_piscando
-    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10 (piscar mais rápido)
-    breq set_blank1
+    cpi reg_aux, 0					; Vê se tá na posicao de ajuste 0
+    brne set_normal1				; Se não, só mostra normalmente
+    lds reg_aux, display_piscando	; Se sim, carrega o estado de piscar
+    andi reg_aux, 0x10				; Pisca mais rápido
+    breq set_blank1					; Se 0, apaga o dígito (pisca)
 set_normal1:
-    mov reg_temp, r22
-    out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00010000
+    mov reg_temp, r22				; Mostra unidade dos segundos
+    out PORT_BCD, reg_temp			; Envia os segundos pro BCD
+    ldi reg_temp, 0b00010000		; Ativa somente o display de unidades de segundos
     rjmp set_ctrl1
 set_blank1:
     clr reg_temp
     out PORT_BCD, reg_temp  ; Limpa PORT_BCD para garantir que nenhum segmento acenda
     ldi reg_temp, 0
 set_ctrl1:
-    out PORT_CTRL, reg_temp
+    out PORT_CTRL, reg_temp	; Ativa somente o display de unidades de segundos
     rcall atraso_display
 
     ; Dígito 2: Dezenas de segundos (r23, posicao_ajuste = 1)
@@ -608,7 +627,7 @@ set_ctrl1:
     cpi reg_aux, 1
     brne set_normal2
     lds reg_aux, display_piscando
-    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    andi reg_aux, 0x10  
     breq set_blank2
 set_normal2:
     mov reg_temp, r23
@@ -631,7 +650,7 @@ set_ctrl2:
     cpi reg_aux, 2
     brne set_normal3
     lds reg_aux, display_piscando
-    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    andi reg_aux, 0x10  
     breq set_blank3
 set_normal3:
     mov reg_temp, r24
@@ -654,7 +673,7 @@ set_ctrl3:
     cpi reg_aux, 3
     brne set_normal4
     lds reg_aux, display_piscando
-    andi reg_aux, 0x10  ; Alterado de 0x20 para 0x10
+    andi reg_aux, 0x10  
     breq set_blank4
 set_normal4:
     mov reg_temp, r25
@@ -690,11 +709,12 @@ dividir_por_10:
     ldi reg_unidades, 10  ; Divisor
     clr reg_dezenas       ; Contador de dezenas
 div_loop:
-    cp reg_temp, reg_unidades  ; Compara com 10
-    brlo div_pronto       ; Se menor, terminou
-    sub reg_temp, reg_unidades ; Subtrai 10
-    inc reg_dezenas       ; Incrementa contador de dezenas
-    rjmp div_loop         ; Repete
+	; reg_temp é minutos ou segundos
+    cp reg_temp, reg_unidades   ; Vê se temp é menor que 10
+    brlo div_pronto				; Se for, não precisa separar nada
+    sub reg_temp, reg_unidades  ; Se não, subtrai 10
+    inc reg_dezenas				; Incrementa as dezenas
+    rjmp div_loop				; Repete
 div_pronto:
     mov reg_unidades, reg_temp ; O resto são as unidades
     pop reg_aux
@@ -740,13 +760,13 @@ salvar_contador_pisca:
     ; Verifica se passou 1 segundo (100 overflows)
     lds reg_temp, contador_overflow
     cpi reg_temp, NUMERO_OVERFLOWS
-    brne fim_overflow
+    brne fim_overflow					; Se não, acaba
 
-    ; Zera contador de overflows após 1 segundo
+    ; Se sim, zera contador de overflows após 1 segundo e incrementa o relógio
     clr reg_temp
     sts contador_overflow, reg_temp
 
-    ; ========= ATUALIZAÇÃO DO RELÓGIO PRINCIPAL =========
+    ; ========= ATUALIZA O RELÓGIO PRINCIPAL =========
     lds reg_dezenas, segundos_relogio
     inc reg_dezenas                  ; Incrementa segundos
     cpi reg_dezenas, 60              ; Verifica se passou de 59
@@ -776,16 +796,16 @@ salvar_segundos_relogio:
 
     ; Incrementa cronômetro (mesma lógica do relógio)
     lds reg_dezenas, segundos_cronometro
-    inc reg_dezenas
-    cpi reg_dezenas, 60
-    brlo salvar_segundos_cronometro
-    clr reg_dezenas
+    inc reg_dezenas							; Incrementa segundos
+    cpi reg_dezenas, 60						; Verifica se passou de 59
+    brlo salvar_segundos_cronometro			; Se não, salva
+    clr reg_dezenas							; Se sim, zera segundos
     
     lds reg_unidades, minutos_cronometro
-    inc reg_unidades
-    cpi reg_unidades, 60
-    brlo salvar_minutos_cronometro
-    clr reg_unidades
+    inc reg_unidades						; Incrementa minutos
+    cpi reg_unidades, 60					; Verifica se passou de 59
+    brlo salvar_minutos_cronometro			
+    clr reg_unidades						; Se sim, zera minutos
 
 salvar_minutos_cronometro:
     sts minutos_cronometro, reg_unidades
