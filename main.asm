@@ -281,7 +281,6 @@ reset_ajuste:
     breq ajustar_dezena_min
     ret
     
-; --- Sub-rotina Corrigida: ajustar_unidade_seg ---
 ajustar_unidade_seg:
     ; Carrega o valor total de segundos
     lds reg_temp, segundos_relogio
@@ -320,7 +319,6 @@ salvar_segundos:
     rcall apitar_buzzer
     ret
     
-; --- Sub-rotina Corrigida: ajustar_unidade_min ---
 ajustar_unidade_min:
     ; Carrega o valor total de minutos
     lds reg_temp, minutos_relogio
