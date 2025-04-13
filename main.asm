@@ -1,5 +1,5 @@
-; Projeto da disciplina de Microcontroladores e Aplicações
-; Relógio digital com display de 7 segmentos para minutos e segundos
+; Projeto da disciplina de Microcontroladores e AplicaÃ§Ãµes
+; RelÃ³gio digital com display de 7 segmentos para minutos e segundos
 ; Data: 07/04/2025
 ; ===================== CONSTANTES DE HARDWARE =====================
 .equ PORT_BCD       = PORTB       ; PB0-PB3: Linhas BCD
@@ -7,21 +7,21 @@
 .equ PORT_CTRL      = PORTD       ; PD0-PD3: Controle dos displays
 .equ DDR_CTRL       = DDRD
 
-.equ DDRC_ADDR      = 0x27        ; Endereço do registrador DDRC
-.equ PINC_ADDR      = 0x26        ; Endereço do registrador PINC
-.equ PORTC_ADDR     = 0x28        ; Endereço do registrador PORTC
+.equ DDRC_ADDR      = 0x27        ; EndereÃ§o do registrador DDRC
+.equ PINC_ADDR      = 0x26        ; EndereÃ§o do registrador PINC
+.equ PORTC_ADDR     = 0x28        ; EndereÃ§o do registrador PORTC
 
-; ===================== CONSTANTES DE BOTÕES =======================
+; ===================== CONSTANTES DE BOTÃ•ES =======================
 .equ BOTAO_MODE     = 2           ; PC2
 .equ BOTAO_START    = 1           ; PC1
-.equ BOTAO_RESET    = 0           ; PC0  <- Novo Botão RESET
+.equ BOTAO_RESET    = 0           ; PC0  <- Novo BotÃ£o RESET
 .equ BUZZER_BIT     = 3           ; PC3
 
 ; ===================== CONSTANTES DE MODOS ========================
 .equ MODO_RELOGIO    = 0
 .equ MODO_CRONOMETRO = 1
 
-; ===================== CONSTANTES DE TEMPORIZAÇÃO =================
+; ===================== CONSTANTES DE TEMPORIZAÃ‡ÃƒO =================
 .equ VALOR_INICIAL_TIMER = 256 - 160
 .equ NUMERO_OVERFLOWS    = 100
 
@@ -33,7 +33,7 @@
 .def reg_status     = r20
 .def reg_display    = r21
 
-; ===================== VARIÁVEIS EM MEMÓRIA =======================
+; ===================== VARIÃVEIS EM MEMÃ“RIA =======================
 .dseg
 segundos_relogio:       .byte 1
 minutos_relogio:        .byte 1
@@ -42,8 +42,9 @@ minutos_cronometro:     .byte 1
 contador_overflow:      .byte 1
 modo_atual:             .byte 1
 cronometro_ativo:       .byte 1
+start_pressionado:		.byte 1
 
-; ===================== VETORES DE INTERRUPÇÃO =====================
+; ===================== VETORES DE INTERRUPÃ‡ÃƒO =====================
 .cseg
 .org 0x0000
     jmp inicio
@@ -59,18 +60,18 @@ inicio:
     ldi reg_temp, low(RAMEND)
     out SPL, reg_temp
 
-    ; Inicializa portas de saída (BCD e controle)
+    ; Inicializa portas de saÃ­da (BCD e controle)
     ldi reg_temp, 0x0F
     out DDR_BCD, reg_temp
     out DDR_CTRL, reg_temp
 
-    ; Configura PC1, PC2 e PC0 como entrada e PC3 como saída (buzzer)
+    ; Configura PC1, PC2 e PC0 como entrada e PC3 como saÃ­da (buzzer)
     lds reg_temp, DDRC_ADDR
     andi reg_temp, ~( (1 << BOTAO_MODE) | (1 << BOTAO_START) | (1 << BOTAO_RESET) )
     ori reg_temp, (1 << BUZZER_BIT)
     sts DDRC_ADDR, reg_temp
 
-    ; Habilita pull-up para os botões (MODE, START e RESET)
+    ; Habilita pull-up para os botÃµes (MODE, START e RESET)
     lds reg_temp, PORTC_ADDR
     ori reg_temp, (1 << BOTAO_MODE) | (1 << BOTAO_START) | (1 << BOTAO_RESET)
     sts PORTC_ADDR, reg_temp
@@ -84,6 +85,7 @@ inicio:
     sts contador_overflow, reg_temp
     sts modo_atual, reg_temp
     sts cronometro_ativo, reg_temp
+	sts start_pressionado, reg_temp
 
     ; Configura timer
     ldi reg_temp, (1<<CS02)|(1<<CS00)
@@ -100,24 +102,24 @@ loop_principal:
     rcall verifica_botoes
     rjmp loop_principal
 
-; ===================== VERIFICAÇÃO DE BOTÕES ======================
+; ===================== VERIFICAÃ‡ÃƒO DE BOTÃ•ES ======================
 verifica_botoes:
     push reg_temp
     push reg_aux
-    ; Executa debounce único e lê os botões de forma debounced
+    ; Executa debounce Ãºnico e lÃª os botÃµes de forma debounced
     
     lds reg_temp, PINC_ADDR
     mov reg_aux, reg_temp  ; Guarda o valor lido
 
-    ; Verifica botão MODE (PC2)
+    ; Verifica botÃ£o MODE (PC2)
     sbrs reg_aux, BOTAO_MODE
     rcall alternar_modo
 
-    ; Verifica botão START (PC1)
+    ; Verifica botÃ£o START (PC1)
     sbrs reg_aux, BOTAO_START
     rcall iniciar_cronometro
 
-    ; Verifica botão RESET (PC0)
+    ; Verifica botÃ£o RESET (PC0)
     sbrs reg_aux, BOTAO_RESET
     rcall reset_cronometro
 
@@ -132,7 +134,7 @@ alternar_modo:
     eor reg_temp, reg_aux
     sts modo_atual, reg_temp
 
-    ; Se for para o modo cronômetro, zera os contadores
+    ; Se for para o modo cronÃ´metro, zera os contadores
     cpi reg_temp, MODO_CRONOMETRO
     brne modo_relogio_voltar
 
@@ -146,27 +148,58 @@ modo_relogio_voltar:
     ret
 
 iniciar_cronometro:
-	rcall debounce
+    rcall debounce2     ; Debounce mais rÃ¡pido para resposta Ã¡gil
 
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_CRONOMETRO
-    brne sair_start
+    brne start_sair
 
-    ; Alterna o estado do cronômetro (ativa/pausa)
+    ; Verifica se o botÃ£o START estÃ¡ pressionado
+    lds reg_temp, PINC_ADDR
+    sbrs reg_temp, BOTAO_START
+    rjmp start_botao_pressionado
+    
+    rjmp start_sair             ; Se nÃ£o estÃ¡ pressionado, sai
+
+start_botao_pressionado:
+    ; Espera um tempo mÃ­nimo (20ms) para confirmar o pressionamento
+    ldi reg_temp, 20
+start_aguarda_confirma:
+    dec reg_temp
+    brne start_aguarda_confirma
+
+    ; Verifica se ainda estÃ¡ pressionado apÃ³s o tempo mÃ­nimo
+    lds reg_temp, PINC_ADDR
+    sbrs reg_temp, BOTAO_START
+    rjmp start_confirma_pressionado
+    
+    rjmp start_sair             ; Se nÃ£o estÃ¡ mais pressionado, ignora
+
+start_confirma_pressionado:
+    ; Alterna estado imediatamente (nÃ£o espera soltar)
     lds reg_temp, cronometro_ativo
     ldi reg_aux, 1
     eor reg_temp, reg_aux
     sts cronometro_ativo, reg_temp
+    
     rcall apitar_buzzer
-sair_start:
+
+    ; Espera soltar o botÃ£o antes de aceitar novo input
+start_aguarda_soltar:
+    rcall debounce2
+    lds reg_temp, PINC_ADDR
+    sbrs reg_temp, BOTAO_START
+    rjmp start_aguarda_soltar
+
+start_sair:
     ret
 
 reset_cronometro:
-    ; Verifica se o cronômetro está parado
+    ; Verifica se o cronÃ´metro estÃ¡ parado
 	rcall debounce
     lds reg_temp, cronometro_ativo
     cpi reg_temp, 0
-    brne sair_reset    ; Se o cronômetro estiver ativo, não reseta
+    brne sair_reset    ; Se o cronÃ´metro estiver ativo, nÃ£o reseta
 
     clr reg_temp
     sts segundos_cronometro, reg_temp
@@ -206,7 +239,20 @@ debounce_loop:
     brcc debounce_loop
     ret
 
-; ===================== ATUALIZAÇÃO DOS DISPLAYS ===================
+debounce2: ;debounce mais rapido
+    ldi r31, byte3(16 * 1000 * 10 / 5)
+    ldi r30, high (16 * 1000 * 10 / 5)
+    ldi r29, low  (16 * 1000 * 10 / 5)
+
+debounce2_loop:
+    subi r29, 1
+    sbci r30, 0
+    sbci r31, 0
+    brcc debounce2_loop
+    ret
+
+
+; ===================== ATUALIZAÃ‡ÃƒO DOS DISPLAYS ===================
 atualiza_displays:
     push reg_temp
     push reg_dezenas
@@ -218,12 +264,12 @@ atualiza_displays:
     push r24
     push r25
 
-    ; Escolhe entre relógio ou cronômetro
+    ; Escolhe entre relÃ³gio ou cronÃ´metro
     lds reg_temp, modo_atual
     cpi reg_temp, MODO_RELOGIO
     breq usa_relogio
 
-    ; Cronômetro
+    ; CronÃ´metro
     lds reg_temp, segundos_cronometro
     rcall dividir_por_10
     mov r22, reg_unidades
@@ -286,7 +332,7 @@ mostra:
     pop reg_temp
     ret
 
-; ===================== DIVISÃO POR 10 ============================
+; ===================== DIVISÃƒO POR 10 ============================
 dividir_por_10:
     push reg_aux
     ldi reg_unidades, 10
@@ -333,7 +379,7 @@ trata_overflow:
     clr reg_temp
     sts contador_overflow, reg_temp
 
-    ; Incrementa relógio
+    ; Incrementa relÃ³gio
     lds reg_dezenas, segundos_relogio
     inc reg_dezenas
     cpi reg_dezenas, 60
@@ -351,7 +397,7 @@ salva_minutos_relogio:
 salva_segundos_relogio:
     sts segundos_relogio, reg_dezenas
 
-    ; Incrementa cronômetro se ativo
+    ; Incrementa cronÃ´metro se ativo
     lds reg_temp, cronometro_ativo
     cpi reg_temp, 1
     brne fim_overflow
