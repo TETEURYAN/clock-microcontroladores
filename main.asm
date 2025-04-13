@@ -56,6 +56,7 @@ display_piscando:       .byte 1   ; Estado do display piscante
 posicao_ajuste:         .byte 1   ; Posição atual no modo ajuste (0-3)
 contador_pisca:         .byte 1   ; Contador para piscar display
 start_pressionado:      .byte 1   ; Estado do botão START
+mensagem_inicial:		.byte 1   ; Flag para mensagem inicial
 
 ; ===================== VETORES DE INTERRUPÇÃO =====================
 .cseg
@@ -126,6 +127,25 @@ inicio:
     sts TIMSK0, reg_temp				; Habilita a interrupção no registrador TIMSK0
 
     sei                           ; Habilita interrupções globais
+
+; ===================== EXIBIÇÃO DE MENSAGEM INICIAL ===============
+	push ZL
+    push ZH
+    push reg_temp
+    
+    ; Verifica se já enviou
+    lds reg_temp, mensagem_inicial
+    cpi reg_temp, 1
+    breq loop_principal  ; Se já enviou, não envia de novo
+    
+    ; Envia mensagem inicial
+    ldi ZL, low(2*msg_modo1)
+    ldi ZH, high(2*msg_modo1)
+    rcall uart_enviar_string
+    
+    ; Marca como enviada
+    ldi reg_temp, 1
+    sts mensagem_inicial, reg_temp
 
 ; ===================== LOOP PRINCIPAL =============================
 loop_principal:
