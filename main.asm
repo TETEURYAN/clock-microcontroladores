@@ -68,9 +68,24 @@ inicio:
     ldi reg_temp, low(RAMEND)
     out SPL, reg_temp
 
+	; Configuração da UART (9600 bps, 8 bits, sem paridade, 1 stop bit)
+	ldi reg_temp, 0x00
+	sts UBRR0H, reg_temp
+	ldi reg_temp, 103 ; 16MHz / (16 * 9600) - 1 = 103.166 → 103
+	sts UBRR0L, reg_temp
+
+	; Habilita transmissão e recepção
+    ldi reg_temp, (1<<TXEN0)|(1<<RXEN0)
+    sts UCSR0B, reg_temp
+    
+    ; Configura formato do frame: 8 bits, 1 stop bit, sem paridade
+    ldi reg_temp, (1<<UCSZ01)|(1<<UCSZ00)
+    sts UCSR0C, reg_temp
+
     ; Configuração das portas de saída
     ldi reg_temp, 0x0F           ; PB0-PB3 como saída (BCD)
     out DDR_BCD, reg_temp
+	ldi reg_temp, 0xF0
     out DDR_CTRL, reg_temp       ; PD0-PD3 como saída (controle displays)
     
     ; Configuração dos botões e buzzer
@@ -148,6 +163,35 @@ alternar_modo:
     
 salvar_modo:
     sts modo_atual, reg_temp      ; Armazena novo modo
+
+	push ZL
+	push ZH
+	ldi ZL, low(2*msg_modo1)
+	ldi ZH, high(2*msg_modo1)
+
+	cpi reg_temp, MODO_CRONOMETRO
+	breq modo2_msg
+	cpi reg_temp, MODO_AJUSTE
+	breq modo3_msg
+
+modo1_msg:
+	rcall uart_enviar_string
+	rjmp fim_msg
+
+modo2_msg:
+	ldi ZL, low(2*msg_modo2_zero)
+    ldi ZH, high(2*msg_modo2_zero)
+    rcall uart_enviar_string
+    rjmp fim_msg
+
+modo3_msg:
+    ldi ZL, low(2*msg_modo3_uni_seg)
+    ldi ZH, high(2*msg_modo3_uni_seg)
+    rcall uart_enviar_string
+    
+fim_msg:
+    pop ZH
+    pop ZL
     
     ; Configurações específicas para cada modo
     cpi reg_temp, MODO_RELOGIO
@@ -217,8 +261,24 @@ start_confirma_pressionado:
     eor reg_temp, reg_aux
     sts cronometro_ativo, reg_temp
     
-    rcall apitar_buzzer           ; Feedback audível
-
+    ; Envia mensagem adequada
+    push ZL
+    push ZH
+    ldi ZL, low(2*msg_modo2_start)
+    ldi ZH, high(2*msg_modo2_start)
+    cpi reg_temp, 0
+    breq send_zero_msg
+    rcall uart_enviar_string
+    rjmp fim_start_msg
+send_zero_msg:
+    ldi ZL, low(2*msg_modo2_zero)
+    ldi ZH, high(2*msg_modo2_zero)
+    rcall uart_enviar_string
+fim_start_msg:
+    pop ZH
+    pop ZL
+    
+    rcall apitar_buzzer 
     ; Espera soltar o botão
 start_aguarda_soltar:
     rcall debounce2
@@ -239,6 +299,39 @@ start_ajuste:
     
 salvar_posicao_ajuste:
     sts posicao_ajuste, reg_temp
+    
+    ; Envia mensagem da posição de ajuste
+    push ZL
+    push ZH
+    lds reg_temp, posicao_ajuste
+    cpi reg_temp, 0
+    breq msg_uni_seg
+    cpi reg_temp, 1
+    breq msg_dez_seg
+    cpi reg_temp, 2
+    breq msg_uni_min
+    
+msg_dez_min:
+    ldi ZL, low(2*msg_modo3_dez_min)
+    ldi ZH, high(2*msg_modo3_dez_min)
+    rjmp send_ajuste_msg
+msg_uni_seg:
+    ldi ZL, low(2*msg_modo3_uni_seg)
+    ldi ZH, high(2*msg_modo3_uni_seg)
+    rjmp send_ajuste_msg
+msg_dez_seg:
+    ldi ZL, low(2*msg_modo3_dez_seg)
+    ldi ZH, high(2*msg_modo3_dez_seg)
+    rjmp send_ajuste_msg
+msg_uni_min:
+    ldi ZL, low(2*msg_modo3_uni_min)
+    ldi ZH, high(2*msg_modo3_uni_min)
+    
+send_ajuste_msg:
+    rcall uart_enviar_string
+    pop ZH
+    pop ZL
+    
     rcall apitar_buzzer           ; Feedback audível
     ret
 
@@ -263,6 +356,16 @@ reset_cronometro:
     clr reg_temp                  ; Zera contadores
     sts segundos_cronometro, reg_temp
     sts minutos_cronometro, reg_temp
+    
+    ; Envia mensagem de reset
+    push ZL
+    push ZH
+    ldi ZL, low(2*msg_modo2_reset)
+    ldi ZH, high(2*msg_modo2_reset)
+    rcall uart_enviar_string
+    pop ZH
+    pop ZL
+    
     rcall apitar_buzzer           ; Feedback audível
     
 fim_reset:
@@ -487,7 +590,7 @@ mostrar_displays:
 set_normal1:
     mov reg_temp, r22
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000001
+    ldi reg_temp, 0b00010000
     rjmp set_ctrl1
 set_blank1:
     clr reg_temp
@@ -510,7 +613,7 @@ set_ctrl1:
 set_normal2:
     mov reg_temp, r23
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000010
+    ldi reg_temp, 0b00100000
     rjmp set_ctrl2
 set_blank2:
     clr reg_temp
@@ -533,7 +636,7 @@ set_ctrl2:
 set_normal3:
     mov reg_temp, r24
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00000100
+    ldi reg_temp, 0b01000000
     rjmp set_ctrl3
 set_blank3:
     clr reg_temp
@@ -556,7 +659,7 @@ set_ctrl3:
 set_normal4:
     mov reg_temp, r25
     out PORT_BCD, reg_temp
-    ldi reg_temp, 0b00001000
+    ldi reg_temp, 0b10000000 
     rjmp set_ctrl4
 set_blank4:
     clr reg_temp
@@ -697,3 +800,44 @@ fim_overflow:
     pop reg_dezenas
     pop reg_temp
     reti
+
+
+; ===================== DADOS EM MEMÓRIA DE PROGRAMA ==============
+msg_modo1:				.db "[Modo 1] MM:SS",13,10,0
+msg_modo2_zero:			.db "[MODO 2] ZERO",13,10,0
+msg_modo2_start:		.db "[MODO 2] START",13,10,0
+msg_modo2_reset:		.db "[MODO 2] RESET",13,10,0
+msg_modo3_uni_seg:		.db "[MODO 3] Ajustando a unidade dos segundos",13,10,0
+msg_modo3_dez_seg:		.db "[MODO 3] Ajustando a dezena dos segundos",13,10,0
+msg_modo3_uni_min:		.db "[MODO 3] Ajustando a unidade dos minutos",13,10,0
+msg_modo3_dez_min:		.db "[MODO 3] Ajustando a dezena dos minutos",13,10,0
+
+; ===================== ROTINAS PARA UART =====================
+; Envia um caractere pela UART (caractere em reg_temp)
+uart_enviar:
+    push reg_aux
+uart_espera:
+    lds reg_aux, UCSR0A
+    sbrs reg_aux, UDRE0          ; Espera buffer de transmissão vazio
+    rjmp uart_espera
+    sts UDR0, reg_temp           ; Envia o caractere
+    pop reg_aux
+    ret
+
+; Envia uma string pela UART (endereço em Z)
+uart_enviar_string:
+    push reg_temp
+uart_string_loop:
+    lpm reg_temp, Z+             ; Carrega caractere da memória de programa
+    cpi reg_temp, 0              ; Verifica fim da string (terminada com null)
+    breq uart_string_fim
+    rcall uart_enviar            ; Envia o caractere
+    rjmp uart_string_loop
+uart_string_fim:
+    pop reg_temp
+    ret
+
+; Converte número de 0-9 para ASCII (entrada em reg_temp, saída em reg_temp)
+numero_para_ascii:
+    subi reg_temp, -'0'          ; Adiciona '0' ao valor
+    ret
