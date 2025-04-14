@@ -117,7 +117,6 @@ inicio:
     sts posicao_ajuste, reg_temp
     sts contador_pisca, reg_temp
     sts start_pressionado, reg_temp
-	sts mensagem_inicial, reg_temp
 
     ; Configuração do Timer0 (prescaler 1024, overflow interrupt)
     ldi reg_temp, (1<<CS02)|(1<<CS00)	; 101
@@ -319,7 +318,6 @@ start_sair:
     
 start_ajuste:
     ; Avança para próxima posição de ajuste
-	rcall debounce
     lds reg_temp, posicao_ajuste
     inc reg_temp
     cpi reg_temp, 4               ; Verifica se passou da última posição
@@ -499,23 +497,33 @@ salvar_minutos:
 ; ===================== ROTINA DO BUZZER ===========================
 apitar_buzzer:
     push reg_temp
-    ; Ativa o buzzer
-    lds reg_temp, PORTC_ADDR			; Carrega o estado atual de PORTC
-    ori reg_temp, (1 << BUZZER_BIT)		; Ativa o bit 3 (PC3) para ligar o buzzer.
+    push reg_aux
+
+    ; Ativa o buzzer (PC3)
+    lds reg_temp, PORTC_ADDR
+    ori reg_temp, (1 << BUZZER_BIT)
     sts PORTC_ADDR, reg_temp
 
-    ; Pequeno delay para o bip
-    ldi reg_temp, 50
-espera_buzzer:
+    ; Delay para bip (~0.15 a 0.2 s dependendo do clock)
+    ldi reg_temp, 150        ; Loop externo
+bip_delay_outer:
+    ldi reg_aux, 255         ; Loop interno
+bip_delay_inner:
+    dec reg_aux
+    brne bip_delay_inner
+
     dec reg_temp
-    brne espera_buzzer
+    brne bip_delay_outer
 
     ; Desativa o buzzer
     lds reg_temp, PORTC_ADDR
-    andi reg_temp, ~(1 << BUZZER_BIT)	; Desativa o bit 3 para desligar o buzzer
+    andi reg_temp, ~(1 << BUZZER_BIT)
     sts PORTC_ADDR, reg_temp
+
+    pop reg_aux
     pop reg_temp
     ret
+
 
 ; ===================== ROTINAS DE DEBOUNCE ========================
 ; Configura um contador de 32 bits para 300ms de delay
