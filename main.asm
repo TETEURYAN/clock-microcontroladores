@@ -61,6 +61,7 @@ posicao_ajuste:         .byte 1   ; Posição atual no modo ajuste (0-3)
 contador_pisca:         .byte 1   ; Contador para piscar display
 mensagem_inicial:		.byte 1   ; Flag para mensagem inicial
 bloqueio_start:         .byte 1   ; Flag para bloquear START temporariamente
+bloqueio_reset:         .byte 1   ; Flag para bloquear RESET temporariamente
 
 ; ===================== VETORES DE INTERRUPÇÃO =====================
 .cseg
@@ -323,8 +324,8 @@ start_confirma_pressionado:
     rcall uart_enviar_string		; Se não, envia a de start
     rjmp fim_start_msg
 send_zero_msg:
-    ldi ZL, low(2*msg_modo2_zero)
-    ldi ZH, high(2*msg_modo2_zero)
+    ldi ZL, low(2*msg_modo2_start)
+    ldi ZH, high(2*msg_modo2_start)
     rcall uart_enviar_string
 fim_start_msg:
     pop ZH
@@ -344,16 +345,30 @@ start_sair:
     
 ; Avança para próxima posição de ajuste
 start_ajuste:
-	rcall debounce
+    rcall debounce
+    
+    ; Verifica se o RESET está pressionado antes de mudar posição
+    lds reg_temp, PINC_ADDR
+    sbrc reg_temp, BOTAO_RESET    ; Se RESET não está pressionado
+    rjmp mudar_posicao            ; Continua normalmente
+    
+    ; Se RESET está pressionado, ignora a mudança de posição
+    ret
+
+mudar_posicao:
     lds reg_temp, posicao_ajuste
     inc reg_temp
     cpi reg_temp, 4               ; Verifica se passou da última posição
     brlt salvar_posicao_ajuste
-    clr reg_temp                  ; Volta para primeira posição
+    clr reg_temp                ; Volta para primeira posição
     
 salvar_posicao_ajuste:
     sts posicao_ajuste, reg_temp
+	
     
+    ; Ativa bloqueio do RESET temporariamente
+    ldi reg_aux, 1
+    sts bloqueio_reset, reg_aux
     ; Envia mensagem da posição de ajuste
     push ZL
     push ZH
@@ -799,6 +814,9 @@ trata_overflow:
     push reg_dezenas
     in reg_status, SREG
     push reg_status
+
+	clr reg_temp
+    sts bloqueio_reset, reg_temp
 
     ; Recarrega timer para próximo overflow em 10ms
     ldi reg_temp, VALOR_INICIAL_TIMER
