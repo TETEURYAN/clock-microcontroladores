@@ -59,8 +59,8 @@ cronometro_ativo:       .byte 1   ; Estado do cronômetro (0=parado, 1=rodando)
 display_piscando:       .byte 1   ; Estado do display piscante
 posicao_ajuste:         .byte 1   ; Posição atual no modo ajuste (0-3)
 contador_pisca:         .byte 1   ; Contador para piscar display
-start_pressionado:      .byte 1   ; Estado do botão START
 mensagem_inicial:		.byte 1   ; Flag para mensagem inicial
+bloqueio_start:         .byte 1   ; Flag para bloquear START temporariamente
 
 ; ===================== VETORES DE INTERRUPÇÃO =====================
 .cseg
@@ -120,7 +120,7 @@ inicio:
     sts display_piscando, reg_temp
     sts posicao_ajuste, reg_temp
     sts contador_pisca, reg_temp
-    sts start_pressionado, reg_temp
+	sts mensagem_inicial, reg_temp
 
     ; Configuração do Timer0 (prescaler 1024, overflow interrupt)
     ldi reg_temp, (1<<CS02)|(1<<CS00)	; 101
@@ -191,6 +191,9 @@ alternar_modo:
     clr reg_temp                  ; Se sim, volta ao modo 0
     
 salvar_modo:
+	ldi reg_aux, 1
+    sts bloqueio_start, reg_aux
+    
     sts modo_atual, reg_temp      ; Armazena novo modo
 
 	; Carrega msg do modo 1
@@ -246,6 +249,11 @@ config_modo_ajuste:
     clr reg_aux                   ; Inicia ajuste na posição 0
     sts posicao_ajuste, reg_aux
     sts contador_pisca, reg_aux	  ; Variável que determina a duração do pisca
+
+aguarda_liberar_start:
+    lds reg_temp, PINC_ADDR
+    sbrs reg_temp, BOTAO_START    ; Se o botão START estiver em nível lógico alto (liberado),
+    rjmp aguarda_liberar_start    ; continua esperando
     
 fim_alternar_modo:
     rcall apitar_buzzer           ; Feedback audível
@@ -253,7 +261,11 @@ fim_alternar_modo:
 
 ; ===================== ROTINA PARA TRATAR BOTÃO START =============
 tratar_start:
-    rcall debounce2               ; Debounce rápido
+    lds reg_aux, bloqueio_start
+    cpi reg_aux, 1
+    breq ignorar_start
+    
+    rcall debounce2              ; Debounce rápido
     
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
@@ -262,6 +274,9 @@ tratar_start:
     breq start_ajuste             ; Vai pro modo ajuste
     
     ret                           ; Nada a fazer em outros modos
+
+ignorar_start:
+    ret
     
 start_cronometro:
     ; Verifica se o botão está pressionado
@@ -322,6 +337,7 @@ start_sair:
     
 start_ajuste:
     ; Avança para próxima posição de ajuste
+	rcall debounce
     lds reg_temp, posicao_ajuste
     inc reg_temp
     cpi reg_temp, 4               ; Verifica se passou da última posição
@@ -788,6 +804,14 @@ trata_overflow:
     cpi reg_temp, INTERVALO_PISCA
     brlo salvar_contador_pisca
     clr reg_temp
+	; Atualizações do temporizador (1 vez por segundo)
+    lds reg_temp, contador_overflow
+    cpi reg_temp, NUMERO_OVERFLOWS
+    brne fim_overflow
+    
+    ; Desativa o bloqueio do START após 1 segundo
+    clr reg_temp
+    sts bloqueio_start, reg_temp
 salvar_contador_pisca:
     sts contador_pisca, reg_temp
     
