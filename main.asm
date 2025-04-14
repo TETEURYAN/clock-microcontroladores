@@ -191,6 +191,7 @@ alternar_modo:
     clr reg_temp                  ; Se sim, volta ao modo 0
     
 salvar_modo:
+	; Evita com que ele aperte start "sozinho" ao trocar de modo
 	ldi reg_aux, 1
     sts bloqueio_start, reg_aux
     
@@ -208,20 +209,21 @@ salvar_modo:
 	cpi reg_temp, MODO_AJUSTE
 	breq modo3_msg
 
+; Envia as mensagens
 modo1_msg:
 	rcall uart_enviar_string			; Envia mensagem modo 1
 	rjmp fim_msg
 
 modo2_msg:
-	ldi ZL, low(2*msg_modo2_zero)
+	ldi ZL, low(2*msg_modo2_zero)		; Carrega mensagem de Zero no modo 2
     ldi ZH, high(2*msg_modo2_zero)
-    rcall uart_enviar_string
+    rcall uart_enviar_string			; Envia mensagem modo 2
     rjmp fim_msg
 
 modo3_msg:
-    ldi ZL, low(2*msg_modo3_uni_seg)
+    ldi ZL, low(2*msg_modo3_uni_seg)	; Carrega mensagem do modo 3
     ldi ZH, high(2*msg_modo3_uni_seg)
-    rcall uart_enviar_string
+    rcall uart_enviar_string			; Envia mensagem modo 3
     
 fim_msg:
     pop ZH
@@ -250,6 +252,7 @@ config_modo_ajuste:
     sts posicao_ajuste, reg_aux
     sts contador_pisca, reg_aux	  ; Variável que determina a duração do pisca
 
+; Rotina feita para evitar pressionamento várias vezes
 aguarda_liberar_start:
     lds reg_temp, PINC_ADDR
     sbrs reg_temp, BOTAO_START    ; Se o botão START estiver em nível lógico alto (liberado),
@@ -261,11 +264,12 @@ fim_alternar_modo:
 
 ; ===================== ROTINA PARA TRATAR BOTÃO START =============
 tratar_start:
+	; Evita com que ele aperte start "sozinho" ao trocar de modo
     lds reg_aux, bloqueio_start
     cpi reg_aux, 1
     breq ignorar_start
     
-    rcall debounce2              ; Debounce rápido
+    rcall debounce2               ; Debounce rápido
     
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
@@ -278,6 +282,7 @@ tratar_start:
 ignorar_start:
     ret
     
+; Evita pressionamento várias vezes de start
 start_cronometro:
     ; Verifica se o botão está pressionado
     lds reg_temp, PINC_ADDR
@@ -300,8 +305,9 @@ start_aguarda_confirma:
     
     rjmp start_sair
     
+; Alterna estado do cronômetro (start/stop)
 start_confirma_pressionado:
-    ; Alterna estado do cronômetro (start/stop)
+
     lds reg_temp, cronometro_ativo
     ldi reg_aux, 1
     eor reg_temp, reg_aux
@@ -325,7 +331,8 @@ fim_start_msg:
     pop ZL
     
     rcall apitar_buzzer 
-    ; Espera soltar o botão
+    
+; Espera soltar o botão
 start_aguarda_soltar:
     rcall debounce2
     lds reg_temp, PINC_ADDR
@@ -335,8 +342,8 @@ start_aguarda_soltar:
 start_sair:
     ret
     
+; Avança para próxima posição de ajuste
 start_ajuste:
-    ; Avança para próxima posição de ajuste
 	rcall debounce
     lds reg_temp, posicao_ajuste
     inc reg_temp
@@ -471,6 +478,7 @@ ajustar_dezena_seg:
     cpi reg_temp, 60
     brlt salvar_segundos
     subi reg_temp, 60
+
 salvar_segundos:
     sts segundos_relogio, reg_temp
     rcall apitar_buzzer
@@ -509,6 +517,7 @@ ajustar_dezena_min:
     cpi reg_temp, 60
     brlt salvar_minutos
     subi reg_temp, 60
+
 salvar_minutos:
     sts minutos_relogio, reg_temp
     rcall apitar_buzzer
@@ -524,10 +533,12 @@ apitar_buzzer:
     ori reg_temp, (1 << BUZZER_BIT)
     sts PORTC_ADDR, reg_temp
 
-    ; Delay para bip (~0.15 a 0.2 s dependendo do clock)
+    ; Delay para bip (0.15 a 0.2 s dependendo do clock)
     ldi reg_temp, 150        ; Loop externo
+
 bip_delay_outer:
     ldi reg_aux, 255         ; Loop interno
+
 bip_delay_inner:
     dec reg_aux
     brne bip_delay_inner
@@ -585,9 +596,9 @@ atualiza_displays:
     push reg_aux
     push reg_display
     push reg_uni_seg
-    push r23
-    push r24
-    push r25
+    push reg_dez_seg
+    push reg_uni_min
+    push reg_dez_min
 
     ; Exibe relógio de acordo com o modo atual
     lds reg_temp, modo_atual
@@ -603,26 +614,26 @@ exibir_relogio:
     ; Prepara dados do relógio para exibição
     lds reg_temp, segundos_relogio
     rcall dividir_por_10
-    mov reg_uni_seg, reg_unidades  ; Unidades de segundos
-    mov r23, reg_dezenas   ; Dezenas de segundos
+    mov reg_uni_seg, reg_unidades   ; Unidades de segundos
+    mov reg_dez_seg, reg_dezenas			; Dezenas de segundos
 
     lds reg_temp, minutos_relogio
     rcall dividir_por_10
-    mov r24, reg_unidades  ; Unidades de minutos
-    mov r25, reg_dezenas   ; Dezenas de minutos
+    mov reg_uni_min, reg_unidades			; Unidades de minutos
+    mov reg_dez_min, reg_dezenas			; Dezenas de minutos
     rjmp mostrar_displays
 
 exibir_cronometro:
     ; Prepara dados do cronômetro para exibição
     lds reg_temp, segundos_cronometro
     rcall dividir_por_10
-    mov reg_uni_seg, reg_unidades  ; Unidades de segundos
-    mov r23, reg_dezenas   ; Dezenas de segundos
+    mov reg_uni_seg, reg_unidades   ; Unidades de segundos
+    mov reg_dez_seg, reg_dezenas			; Dezenas de segundos
 
     lds reg_temp, minutos_cronometro
     rcall dividir_por_10
-    mov r24, reg_unidades  ; Unidades de minutos
-    mov r25, reg_dezenas   ; Dezenas de minutos
+    mov reg_uni_min, reg_unidades			; Unidades de minutos
+    mov reg_dez_min, reg_dezenas			; Dezenas de minutos
     rjmp mostrar_displays
     
 exibir_relogio_ajuste:
@@ -630,12 +641,12 @@ exibir_relogio_ajuste:
     lds reg_temp, segundos_relogio
     rcall dividir_por_10
     mov reg_uni_seg, reg_unidades
-    mov r23, reg_dezenas
+    mov reg_dez_seg, reg_dezenas
 
     lds reg_temp, minutos_relogio
     rcall dividir_por_10
-    mov r24, reg_unidades
-    mov r25, reg_dezenas
+    mov reg_uni_min, reg_unidades
+    mov reg_dez_min, reg_dezenas
     
     ; Incrementa display_piscando para controlar o piscar
     lds reg_temp, display_piscando
@@ -669,7 +680,7 @@ set_ctrl1:
     out PORT_CTRL, reg_temp	; Ativa somente o display de unidades de segundos
     rcall atraso_display
 
-    ; Dígito 2: Dezenas de segundos (r23, posicao_ajuste = 1)
+    ; Dígito 2: Dezenas de segundos (reg_dez_seg, posicao_ajuste = 1)
     lds reg_aux, modo_atual
     cpi reg_aux, MODO_AJUSTE
     brne set_normal2
@@ -680,7 +691,7 @@ set_ctrl1:
     andi reg_aux, 0x10  
     breq set_blank2
 set_normal2:
-    mov reg_temp, r23
+    mov reg_temp, reg_dez_seg
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b00100000
     rjmp set_ctrl2
@@ -692,7 +703,7 @@ set_ctrl2:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Dígito 3: Unidades de minutos (r24, posicao_ajuste = 2)
+    ; Dígito 3: Unidades de minutos (reg_uni_min, posicao_ajuste = 2)
     lds reg_aux, modo_atual
     cpi reg_aux, MODO_AJUSTE
     brne set_normal3
@@ -703,7 +714,7 @@ set_ctrl2:
     andi reg_aux, 0x10  
     breq set_blank3
 set_normal3:
-    mov reg_temp, r24
+    mov reg_temp, reg_uni_min
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b01000000
     rjmp set_ctrl3
@@ -715,7 +726,7 @@ set_ctrl3:
     out PORT_CTRL, reg_temp
     rcall atraso_display
 
-    ; Dígito 4: Dezenas de minutos (r25, posicao_ajuste = 3)
+    ; Dígito 4: Dezenas de minutos (reg_dez_min, posicao_ajuste = 3)
     lds reg_aux, modo_atual
     cpi reg_aux, MODO_AJUSTE
     brne set_normal4
@@ -726,7 +737,7 @@ set_ctrl3:
     andi reg_aux, 0x10  
     breq set_blank4
 set_normal4:
-    mov reg_temp, r25
+    mov reg_temp, reg_dez_min
     out PORT_BCD, reg_temp
     ldi reg_temp, 0b10000000 
     rjmp set_ctrl4
@@ -742,9 +753,9 @@ set_ctrl4:
     clr reg_temp
     out PORT_CTRL, reg_temp
 
-    pop r25
-    pop r24
-    pop r23
+    pop reg_dez_min
+    pop reg_uni_min
+    pop reg_dez_seg
     pop reg_uni_seg
     pop reg_display
     pop reg_aux
@@ -812,6 +823,7 @@ trata_overflow:
     ; Desativa o bloqueio do START após 1 segundo
     clr reg_temp
     sts bloqueio_start, reg_temp
+
 salvar_contador_pisca:
     sts contador_pisca, reg_temp
     
