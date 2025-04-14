@@ -42,6 +42,10 @@
 .def reg_aux        = r19         ; Registrador auxiliar
 .def reg_status     = r20         ; Armazena SREG durante interrupções
 .def reg_display    = r21         ; Controle de exibição
+.def reg_uni_seg    = r22        ; Unidades de segundos
+.def reg_dez_seg    = r23         ; Dezenas de segundos
+.def reg_uni_min    = r24         ; Unidades de minutos
+.def reg_dez_min    = r25         ; Dezenas de minutos
 
 ; ===================== VARIÁVEIS EM MEMÓRIA =======================
 .dseg
@@ -564,7 +568,7 @@ atualiza_displays:
     push reg_unidades
     push reg_aux
     push reg_display
-    push r22
+    push reg_uni_seg
     push r23
     push r24
     push r25
@@ -583,7 +587,7 @@ exibir_relogio:
     ; Prepara dados do relógio para exibição
     lds reg_temp, segundos_relogio
     rcall dividir_por_10
-    mov r22, reg_unidades  ; Unidades de segundos
+    mov reg_uni_seg, reg_unidades  ; Unidades de segundos
     mov r23, reg_dezenas   ; Dezenas de segundos
 
     lds reg_temp, minutos_relogio
@@ -596,7 +600,7 @@ exibir_cronometro:
     ; Prepara dados do cronômetro para exibição
     lds reg_temp, segundos_cronometro
     rcall dividir_por_10
-    mov r22, reg_unidades  ; Unidades de segundos
+    mov reg_uni_seg, reg_unidades  ; Unidades de segundos
     mov r23, reg_dezenas   ; Dezenas de segundos
 
     lds reg_temp, minutos_cronometro
@@ -609,7 +613,7 @@ exibir_relogio_ajuste:
     ; Carrega os valores normais dos dígitos
     lds reg_temp, segundos_relogio
     rcall dividir_por_10
-    mov r22, reg_unidades
+    mov reg_uni_seg, reg_unidades
     mov r23, reg_dezenas
 
     lds reg_temp, minutos_relogio
@@ -626,7 +630,7 @@ exibir_relogio_ajuste:
     rjmp mostrar_displays
 
 mostrar_displays:
-    ; Dígito 1: Unidades de segundos (r22, posicao_ajuste = 0)
+    ; Dígito 1: Unidades de segundos (reg_uni_seg, posicao_ajuste = 0)
     lds reg_aux, modo_atual
     cpi reg_aux, MODO_AJUSTE		; Vê se tá no modo ajuste
     brne set_normal1				; Se não, só mostra normalmente
@@ -637,7 +641,7 @@ mostrar_displays:
     andi reg_aux, 0x10				; Pisca mais rápido
     breq set_blank1					; Se 0, apaga o dígito (pisca)
 set_normal1:
-    mov reg_temp, r22				; Mostra unidade dos segundos
+    mov reg_temp, reg_uni_seg				; Mostra unidade dos segundos
     out PORT_BCD, reg_temp			; Envia os segundos pro BCD
     ldi reg_temp, 0b00010000		; Ativa somente o display de unidades de segundos
     rjmp set_ctrl1
@@ -725,7 +729,7 @@ set_ctrl4:
     pop r25
     pop r24
     pop r23
-    pop r22
+    pop reg_uni_seg
     pop reg_display
     pop reg_aux
     pop reg_unidades
@@ -890,4 +894,4 @@ uart_string_fim:
 ; Converte número de 0-9 para ASCII (entrada em reg_temp, saída em reg_temp)
 numero_para_ascii:
     subi reg_temp, -'0'          ; Adiciona '0' ao valor
-    ret
+    ret	
