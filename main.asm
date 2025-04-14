@@ -117,6 +117,7 @@ inicio:
     sts posicao_ajuste, reg_temp
     sts contador_pisca, reg_temp
     sts start_pressionado, reg_temp
+	sts mensagem_inicial, reg_temp
 
     ; Configuração do Timer0 (prescaler 1024, overflow interrupt)
     ldi reg_temp, (1<<CS02)|(1<<CS00)	; 101
@@ -318,6 +319,7 @@ start_sair:
     
 start_ajuste:
     ; Avança para próxima posição de ajuste
+	rcall debounce
     lds reg_temp, posicao_ajuste
     inc reg_temp
     cpi reg_temp, 4               ; Verifica se passou da última posição
