@@ -3,6 +3,7 @@
 ; Matheus Ryan, Lucas Heron e Rafael Luciano
 ; 07/04/2025
 ; ================================================================
+.include "m328pdef.inc"   ; include dos labels e vetores do avr
 
 ; ===================== CONSTANTES DE HARDWARE =====================
 ; Define as portas de saída para o BCD e de controle para o display
@@ -69,6 +70,8 @@ bloqueio_reset:         .byte 1   ; Flag para bloquear RESET temporariamente
     jmp inicio                   
 .org OVF0addr
     jmp trata_overflow           ; Vetor de interrupção de overflow do Timer0
+.org PCI1addr                                      
+    jmp PCINT1_ISR			 ; Vetor de interrupção 
 
 ; ===================== PROGRAMA PRINCIPAL =========================
 .org 0x0034
@@ -131,6 +134,12 @@ inicio:
     ldi reg_temp, (1<<TOIE0)			; Ativa a interrupção de overflow do Timer0 
     sts TIMSK0, reg_temp				; Habilita a interrupção no registrador TIMSK0
 
+	    ; Ativa Pin Change Interrupt para PC0, PC1, PC2 
+    ldi reg_temp, (1<<PCINT8)|(1<<PCINT9)|(1<<PCINT10)
+    sts PCMSK1, reg_temp        ; libera PCINT8–PCINT10 (PC0–PC2)
+    ldi reg_temp, (1<<PCIE1)
+    sts PCICR,  reg_temp        ; habilita bloco PCINT1 (PCINT[15:8])
+
     sei                           ; Habilita interrupções globais
 
 ; ===================== EXIBIÇÃO DE MENSAGEM INICIAL ===============
@@ -155,35 +164,10 @@ inicio:
 ; ===================== LOOP PRINCIPAL =============================
 loop_principal:
     rcall atualiza_displays       ; Atualiza os displays
-    rcall verifica_botoes         ; Verifica entrada dos botões
     rjmp loop_principal           ; Repete indefinidamente
-
-; ===================== ROTINA DE VERIFICAÇÃO DE BOTÕES ============
-verifica_botoes:
-    push reg_temp
-    push reg_aux
-    
-    ; Lê o estado atual dos botões
-    lds reg_temp, PINC_ADDR
-    mov reg_aux, reg_temp         ; Guarda cópia do estado
-
-    ; Verifica cada botão individualmente
-    sbrs reg_aux, BOTAO_MODE      ; Botão MODE pressionado?
-    rcall alternar_modo           ; Sim, alterna modo
-
-    sbrs reg_aux, BOTAO_START     ; Botão START pressionado?
-    rcall tratar_start            ; Sim, trata ação do START
-
-    sbrs reg_aux, BOTAO_RESET     ; Botão RESET pressionado?
-    rcall tratar_reset            ; Sim, trata ação do RESET
-
-    pop reg_aux
-    pop reg_temp
-    ret
 
 ; ===================== ROTINA PARA ALTERNAR MODOS =================
 alternar_modo:
-    rcall debounce                ; Espera debounce
     lds reg_temp, modo_atual      ; Carrega modo atual
     
     inc reg_temp                  ; Avança para próximo modo
@@ -270,8 +254,6 @@ tratar_start:
     cpi reg_aux, 1
     breq ignorar_start
     
-    rcall debounce2               ; Debounce rápido
-    
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
     breq start_cronometro         ; Vai pro modo cronômetro
@@ -335,7 +317,6 @@ fim_start_msg:
     
 ; Espera soltar o botão
 start_aguarda_soltar:
-    rcall debounce2
     lds reg_temp, PINC_ADDR
     sbrs reg_temp, BOTAO_START
     rjmp start_aguarda_soltar
@@ -345,7 +326,6 @@ start_sair:
     
 ; Avança para próxima posição de ajuste
 start_ajuste:
-    rcall debounce
     
     ; Verifica se o RESET está pressionado antes de mudar posição
     lds reg_temp, PINC_ADDR
@@ -413,7 +393,6 @@ send_ajuste_msg:
 
 ; ===================== ROTINA PARA TRATAR BOTÃO RESET =============
 tratar_reset:
-    rcall debounce                ; Espera debounce
     
     lds reg_temp, modo_atual      ; Verifica modo atual
     cpi reg_temp, MODO_CRONOMETRO
@@ -568,38 +547,6 @@ bip_delay_inner:
 
     pop reg_aux
     pop reg_temp
-    ret
-
-
-; ===================== ROTINAS DE DEBOUNCE ========================
-; Configura um contador de 32 bits para 300ms de delay
-; Repete enquanto o carry não for setado
-debounce:
-    ; Debounce de ~300ms
-	;           clock(MHz)   delay(ms)
-	;               v           v
-    ldi r31, byte3(16 * 1000 * 300 / 5)
-    ldi r30, high(16 * 1000 * 300 / 5)
-    ldi r29, low(16 * 1000 * 300 / 5)
-
-debounce_loop:
-    subi r29, 1
-    sbci r30, 0
-    sbci r31, 0
-    brcc debounce_loop
-    ret
-
-debounce2:
-    ; Debounce rápido de ~30ms (para botão START)
-    ldi r31, byte3(16 * 1000 * 40 / 5)
-    ldi r30, high(16 * 1000 * 40 / 5)
-    ldi r29, low(16 * 1000 * 40 / 5)
-
-debounce2_loop:
-    subi r29, 1
-    sbci r30, 0
-    sbci r31, 0
-    brcc debounce2_loop
     ret
 
 ; ===================== ROTINA DE ATUALIZAÇÃO DE DISPLAYS =========
@@ -808,6 +755,37 @@ loop_interno:
     brne loop_externo
     ret
 
+; Rotina de tratamento de botões por interrupção 
+PCINT1_ISR:
+    push r16
+    in   r16, SREG
+    push r16
+
+    in   r16, PINC         ; lê estado atual de PC0 a PC2
+    ; botões estão em pull-up, ativo em nível baixo
+
+    ; se PC2(Mode) == 0 → alternar modo
+    sbrc r16, BOTAO_MODE
+    rjmp no_mode
+    rcall alternar_modo
+
+no_mode:
+    ; se PC1(Start) == 0 → tratar start
+    sbrc r16, BOTAO_START
+    rjmp no_start
+    rcall tratar_start
+
+no_start:
+    ; se PC0(Reset) == 0 → tratar reset
+    sbrc r16, BOTAO_RESET
+    rjmp no_reset
+    rcall tratar_reset
+	
+no_reset:
+    pop  r16
+    out  SREG, r16
+    pop  r16
+    reti
 ; ===================== TRATAMENTO DE OVERFLOW DO TIMER0 ===========
 trata_overflow:
     push reg_temp
